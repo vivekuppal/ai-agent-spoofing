@@ -165,7 +165,7 @@ echo Granting Pub/Sub publisher on %TOPIC% to GCS service agent %GCS_SERVICE_AGE
 call gcloud pubsub topics add-iam-policy-binding "%TOPIC%" --member="serviceAccount:%GCS_SERVICE_AGENT%" --role="roles/pubsub.publisher" --project "%PROJECT_ID%"
 
 REM 14) Create GCS bucket notification (OBJECT_FINALIZE only, optional prefix)
-echo Creating GCS notification on gs://%BUCKET% -> topic %TOPIC%
+echo Creating GCS notification on gs://%BUCKET% -^> topic %TOPIC%
 if "%OBJECT_PREFIX%"=="" (
   call gcloud storage buckets notifications create "gs://%BUCKET%" --topic="%TOPIC%" --event-types=OBJECT_FINALIZE --payload-format=json --project="%PROJECT_ID%"
 ) else (
