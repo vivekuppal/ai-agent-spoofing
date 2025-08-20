@@ -6,13 +6,15 @@ import json
 
 async def process_file(content: bytes, context: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Implement your component logic here.
+    Implement component logic here.
     'content' is the exact bytes of the uploaded GCS object.
-    'context' gives you bucket/name/generation and the raw event payload.
+    'context' gives bucket/name/generation and the raw event payload.
     Return a JSON-serializable result.
     """
     # Example: If the file looks like JSON, parse it; else just echo stats.
     try:
+        # Detect the pattern of both SPF and DKIM failed
+        # Send an email for the same
         maybe_json = json.loads(content.decode("utf-8"))
         kind = "json"
         size = len(content)
