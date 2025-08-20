@@ -51,9 +51,9 @@ if __name__ == "__main__":
     engine = build_engine_with_email(
         smtp_host="smtp.dreamhost.com",
         smtp_port=587,
-        username="vivek@lappuai.com",
-        password="4JzSRc4!%dBs!u#a",
-        to_list=["vivek.uppal@gmail.com"],
+        username="webapp@lappuai.com",
+        password="",
+        to_list=["vivek.uppal@gmail.com", "vivek@lappuai.com"],
     )
 
     # Scan one or many XML files

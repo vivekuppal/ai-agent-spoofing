@@ -420,7 +420,7 @@ if __name__ == "__main__":
         port = 587
         use_ssl = (port == 465)
         use_tls = (port == 587)
-        username = 'vivek@lappuai.com'
+        username = 'webapp@lappuai.com'
         print(f"password: {password}")
 
         use_ssl = (port == 465)
