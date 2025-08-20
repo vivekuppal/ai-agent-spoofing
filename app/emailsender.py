@@ -475,3 +475,19 @@ if __name__ == "__main__":
 
     except Exception as e:
         print(f"Failed: {e}")
+
+# Example of persistent connection usage
+# with EmailSender("smtp.dreamhost.com", 587, "you@domain.com", "APP_PASSWORD",
+#                  use_tls=True) as s:
+#     for r in ["a@x.com", "b@x.com", "c@x.com"]:
+#         s.send(from_addr="you@domain.com", to=r, subject="Hi", text="Hello!")
+
+# Example of DKIM signing
+# s = EmailSender(
+#     "smtp.example.com", 587, "you@example.com", "password", use_tls=True,
+#     dkim_selector="s1",
+#     dkim_domain="example.com",
+#     dkim_private_key="/path/to/private_key.pem",  # or PEM bytes
+# )
+# s.send(from_addr="you@example.com", to="alice@example.com", subject="Signed",
+#        text="Hi")

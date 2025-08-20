@@ -142,6 +142,8 @@ call gcloud pubsub topics create "%DLQ_TOPIC%" --project "%PROJECT_ID%"
 REM 10) Allow service agent to publish to DLQ
 call gcloud pubsub topics add-iam-policy-binding "%DLQ_TOPIC%" --member="serviceAccount:%PUBSUB_SERVICE_AGENT%" --role="roles/pubsub.publisher" --project "%PROJECT_ID%"
 
+gcloud secrets add-iam-policy-binding SMTP_PASSWORD --member="serviceAccount:%PUBSUB_SERVICE_AGENT%" --role="roles/secretmanager.secretAccessor"
+
 @echo on
 REM 11) Create filtered push subscription with OIDC auth + DLQ
 echo Creating subscription %SUB% (filter + push auth + DLQ)
