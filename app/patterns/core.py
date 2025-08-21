@@ -86,6 +86,7 @@ class XmlPatternEngine:
         Stream-parse XML from an in-memory string and dispatch actions on matches.
         Mirrors engine.scan_file() but reads from a StringIO source.
         """
+        print("Scanning in-memory XML string")
         matches_count = 0
         context = ET.iterparse(io.StringIO(xml_text), events=("end",))
         for event, elem in context:
@@ -111,4 +112,5 @@ class XmlPatternEngine:
                     matches_count += len(found)
 
                 elem.clear()  # free memory
+        print(f"scan_string - Total matches found: {matches_count}")
         return matches_count

@@ -52,7 +52,7 @@ class SecretNotFound(Exception):
 @lru_cache(maxsize=256)
 def _fetch_from_gsm(
     secret_name: str,
-    project_id: Optional[str] = None,
+    project_id: str,
     version: str = "latest",
 ) -> Optional[str]:
     """

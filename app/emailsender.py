@@ -101,7 +101,9 @@ class EmailSender:
                 if self.use_tls:
                     server.starttls(context=context)
                     server.ehlo()
-
+            print(f"Connecting to SMTP server {self.smtp_host}:{self.smtp_port}")
+            print(f"Using TLS: {self.use_tls}, SSL: {self.use_ssl}")
+            print(f"username: {self.username} password len: {len(self.password) if self.password else 'None'}")
             server.login(self.username, self.password)
             return server
 
@@ -173,6 +175,8 @@ class EmailSender:
             return "text", "csv"
         if suffix in {".json"}:
             return "application", "json"
+        if suffix in {".xml"}:
+            return "application", "xml"
         return "application", "octet-stream"
 
     def _build_message(
@@ -406,7 +410,7 @@ def outlook365_sender(username: str, password: str, **dkim_opts) -> EmailSender:
 # ---------- CLI test runner (single or bulk) ----------
 
 if __name__ == "__main__":
-    import getpass
+    # import getpass
 
     print("=== EmailSender Test ===")
     try:
@@ -421,7 +425,6 @@ if __name__ == "__main__":
         use_ssl = (port == 465)
         use_tls = (port == 587)
         username = 'webapp@lappuai.com'
-        print(f"password: {password}")
 
         use_ssl = (port == 465)
         use_tls = (port == 587)

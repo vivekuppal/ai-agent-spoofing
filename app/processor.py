@@ -1,10 +1,10 @@
 # app/processor.py
 from __future__ import annotations
 from typing import Any, Dict
-from .patterns.core import XmlPatternEngine
-from .patterns.dmarc_patterns import BothFailPolicyPattern
-from .action.email_action import EmailAction
-from .emailsender import EmailSender
+from app.patterns.core import XmlPatternEngine
+from app.patterns.dmarc_patterns import BothFailPolicyPattern
+from app.action.email_action import EmailAction
+from app.emailsender import EmailSender
 
 
 async def process_file(content: bytes, context: Dict[str, Any]) -> Dict[str, Any]:
@@ -24,7 +24,7 @@ async def process_file(content: bytes, context: Dict[str, Any]) -> Dict[str, Any
                 EmailAction(
                     sender=context["email_sender"],
                     from_addr="webapp@lappuai.com",
-                    to_addrs=["vivek.uppala@gmail.com", "tsakic@lappuai.com", "vivek@lappuai.com"],
+                    to_addrs=["vivek.uppal@gmail.com", "vivek@lappuai.com"],
                     subject_prefix="[Spoofing Alert]",
                     use_html=True,
                 )
@@ -34,7 +34,8 @@ async def process_file(content: bytes, context: Dict[str, Any]) -> Dict[str, Any
         # Process the XML content
         matches_count = engine.scan_string(content.decode("utf-8"))
         return {"matches_count": matches_count}
-    except Exception:
+    except Exception as ex:
+        print(f"Error processing file: {ex}")
         return {"kind": "bytes", "size": len(content)}
 
 

@@ -13,13 +13,13 @@ set PROJECT_ID=lappuai-prod
 set REGION=us-east1
 
 REM Cloud Run service (one component). If you deployed multiple, run per service or duplicate this section.
-set SERVICE=ai-agent-spoofing-2
+set SERVICE=ai-agent-spoofing
 
 REM Pub/Sub topic that GCS publishes to
-set TOPIC=ai-agent-spoofing-2-topic
+set TOPIC=ai-agent-spoofing-topic
 
 REM Subscriptions to delete (space-separated)
-set SUB=ai-agent-spoofing-2-sub
+set SUB=ai-agent-spoofing-sub
 
 REM If DLQs follow "dlq.<subscription>", leave DLQ_TOPICS empty to auto-derive.
 REM Otherwise set explicitly, e.g.: set DLQ_TOPICS=dlq.sub-ai-scorer custom-dlq

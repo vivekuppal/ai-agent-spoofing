@@ -128,7 +128,7 @@ REM 4) Build container (Cloud Build) and push to gcr.io
 @echo on
 echo Building image %IMAGE%
 call gcloud builds submit --tag "%IMAGE%" --project "%PROJECT_ID%"
-timeout /t 10
+timeout /t 5
 
 REM 5) Deploy Cloud Run (private)
 @echo on
@@ -169,7 +169,8 @@ call gcloud pubsub topics create "%DLQ_TOPIC%" --project "%PROJECT_ID%"
 REM 10) Allow service agent to publish to DLQ
 call gcloud pubsub topics add-iam-policy-binding "%DLQ_TOPIC%" --member="serviceAccount:%PUBSUB_SERVICE_AGENT%" --role="roles/pubsub.publisher" --project "%PROJECT_ID%"
 
-call gcloud secrets add-iam-policy-binding SMTP_PASSWORD --member="serviceAccount:%PUBSUB_SERVICE_AGENT%" --role="roles/secretmanager.secretAccessor"
+call gcloud secrets add-iam-policy-binding SMTP_PASSWORD --member="serviceAccount:%PUBSUB_SERVICE_AGENT%" --role="roles/secretmanager.secretAccessor" --project "%PROJECT_ID%"
+call gcloud secrets add-iam-policy-binding SMTP_PASSWORD --member="serviceAccount:%RUNTIME_SA%" --role="roles/secretmanager.secretAccessor" --project "%PROJECT_ID%"
 
 @echo on
 REM 11) Create filtered push subscription with OIDC auth + DLQ

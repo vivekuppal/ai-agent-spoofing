@@ -8,9 +8,9 @@ from typing import Any, Dict, Optional, Tuple
 from fastapi import FastAPI, Request, HTTPException, Response
 from google.cloud import storage
 
-from .emailsender import EmailSender
-from .processor import process_file
-from .utils import verify_pubsub_jwt_if_required, json_dumps, get_secret
+from app.emailsender import EmailSender
+from app.processor import process_file
+from app.utils import verify_pubsub_jwt_if_required, json_dumps, get_secret
 
 logger = logging.getLogger("uvicorn")
 logger.setLevel(logging.INFO)
@@ -40,11 +40,15 @@ def get_email_sender() -> EmailSender:
 
 
 def _create_email_sender() -> EmailSender:
+    print("Creating EmailSender instance")
+    username = os.getenv("SMTP_USER", "webapp@lappuai.com")
+    password = get_secret(secret_name="SMTP_PASSWORD", project_id="lappuai-prod", default=None)
+    print(f"username: {username} password len: {len(password) if password else 'None'}")
     return EmailSender(
         smtp_host=os.getenv("SMTP_HOST", "smtp.dreamhost.com"),
         smtp_port=int(os.getenv("SMTP_PORT", "587")),
-        smtp_user=os.getenv("SMTP_USER", "webapp@lappuai.com"),
-        smtp_password=get_secret("SMTP_PASSWORD"),
+        username=username,
+        password=password,
         use_tls=bool(os.getenv("USE_TLS", "true").lower() in ["true", "1"]),
     )
 
@@ -150,6 +154,22 @@ def clear_cached_secret(secret_name: Optional[str] = None,
     from .utils import clear_gsm_cache
     clear_gsm_cache(secret_name, project_id)
     return {"status": "ok", "message": "GSM cache cleared."}
+
+
+@app.get("/local")
+async def local_test():
+    """
+    Process the file smoke.xml locally"""
+    with open("smoke.xml", "rb") as f:
+        content_bytes = f.read()
+    result = await process_file(
+            content=content_bytes,
+            context={
+                "email_sender": get_email_sender(),
+            }
+        )
+    print("Local test result:", result)
+    return {"status": "ok", "component": COMPONENT_NAME, "result": result}
 
 
 @app.post("/")  # Pub/Sub push target
