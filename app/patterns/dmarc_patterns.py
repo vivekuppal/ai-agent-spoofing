@@ -2,7 +2,7 @@
 from __future__ import annotations
 from typing import List
 from dataclasses import dataclass
-from patterns.core import Match, Pattern
+from app.patterns.core import Match, Pattern
 
 
 @dataclass

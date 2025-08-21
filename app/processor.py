@@ -1,10 +1,10 @@
 # app/processor.py
 from __future__ import annotations
 from typing import Any, Dict
-from patterns.core import XmlPatternEngine
-from patterns.dmarc_patterns import BothFailPolicyPattern
-from action.email_action import EmailAction
-from emailsender import EmailSender
+from .patterns.core import XmlPatternEngine
+from .patterns.dmarc_patterns import BothFailPolicyPattern
+from .action.email_action import EmailAction
+from .emailsender import EmailSender
 
 
 async def process_file(content: bytes, context: Dict[str, Any]) -> Dict[str, Any]:
@@ -25,7 +25,7 @@ async def process_file(content: bytes, context: Dict[str, Any]) -> Dict[str, Any
                     sender=context["email_sender"],
                     from_addr="webapp@lappuai.com",
                     to_addrs=["vivek.uppala@gmail.com", "tsakic@lappuai.com", "vivek@lappuai.com"],
-                    subject_prefix="[DMARC Alert]",
+                    subject_prefix="[Spoofing Alert]",
                     use_html=True,
                 )
             ]

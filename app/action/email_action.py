@@ -1,7 +1,7 @@
 # actions/email_action.py
 from __future__ import annotations
 from typing import List
-from patterns.core import Match, Action
+from app.patterns.core import Match, Action
 
 
 class EmailAction(Action):
