@@ -20,13 +20,12 @@ async def process_file(content: bytes, context: Dict[str, Any]) -> Dict[str, Any
         # Create an XML pattern engine with the registered patterns
         patterns = [BothFailPolicyPattern()]
         routes = {
-            "both_fail_policy": [
+            BothFailPolicyPattern.name: [
                 EmailAction(
                     sender=context["email_sender"],
                     from_addr="webapp@lappuai.com",
                     to_addrs=["vivek.uppal@gmail.com", "vivek@lappuai.com"],
-                    subject_prefix="[Spoofing Alert]",
-                    use_html=True,
+                    subject_prefix="[Spoofing Alert]"
                 )
             ]
         }
@@ -112,7 +111,7 @@ def example_in_memory_xml_with_email():
                     sender=sender,
                     from_addr=username,
                     to_addrs=to_list,
-                    subject_prefix="[DMARC Alert]",
+                    subject_prefix="[Spoofing Alert]",
                     use_html=True,
                 )
             ]

@@ -37,7 +37,7 @@ def build_engine_with_email(
                 sender=sender,
                 from_addr=username,
                 to_addrs=to_list,
-                subject_prefix="[DMARC Alert]",
+                subject_prefix="[Spoofing Alert]",
                 use_html=True,
             ),
             # You can add more actions here, e.g., WebhookAction(), LogAction(), QueueAction()

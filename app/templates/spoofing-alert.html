@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en" style="margin:0;padding:0;">
+<head>
+  <meta charset="utf-8">
+  <meta name="x-apple-disable-message-reformatting">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Spoofing Alert</title>
+  <style>
+    /* Some clients honor embedded CSS; everything critical is also inlined */
+    @media (max-width: 640px) {
+      .container { width: 100% !important; }
+      .mobile-stack { display: block !important; width: 100% !important; }
+      .btn { display: block !important; width: 100% !important; margin-bottom: 8px !important; }
+    }
+    /* Dark mode hint (best-effort) */
+    @media (prefers-color-scheme: dark) {
+      body, .card { background-color: #0b0c0f !important; color: #e5e7eb !important; }
+      .muted { color: #a1a1aa !important; }
+      .divider { border-color: #1f2937 !important; }
+    }
+  </style>
+</head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#111827;">
+  <center style="width:100%;background:#f3f4f6;padding:24px 0;">
+    <table role="presentation" class="container" cellpadding="0" cellspacing="0" width="600" style="width:600px;max-width:100%;">
+      <tr>
+        <td style="padding:0 16px;">
+          <!-- Header -->
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td style="padding:16px 0;text-align:left;">
+                {% if logo_url %}
+                  <img src="{{ logo_url }}" alt="{{ org_name or 'Security' }}" height="28" style="display:inline-block;border:0;outline:none;text-decoration:none;height:28px;">
+                {% else %}
+                  <span style="font-weight:700;font-size:18px;color:#111827;">{{ org_name or 'Security' }}</span>
+                {% endif %}
+              </td>
+              <td style="padding:16px 0;text-align:right;">
+                <span style="font-size:12px;color:#6b7280;">Alert ID&nbsp;{{ alert_id }}</span>
+              </td>
+            </tr>
+          </table>
+
+          <!-- Card -->
+          <table role="presentation" class="card" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">
+            <tr>
+              <td style="padding:20px 20px 8px 20px;">
+                <div style="font-size:14px;line-height:20px;color:#374151;">
+                  <div style="display:flex;align-items:center;">
+                    <span style="display:inline-block;font-weight:700;font-size:18px;color:#111827;">Potential Spoofing Detected</span>
+                    <span style="display:inline-block;margin-left:10px;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:700;color:#ffffff;background:{{ severity_color or '#ea580c' }};">
+                      {{ severity|upper }}
+                    </span>
+                    {% if environment %}
+                      <span style="display:inline-block;margin-left:10px;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;color:#111827;background:#f3f4f6;">
+                        {{ environment }}
+                      </span>
+                    {% endif %}
+                  </div>
+                </div>
+              </td>
+            </tr>
+
+            <!-- Summary row -->
+            <tr>
+              <td style="padding:0 20px 8px 20px;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td class="mobile-stack" style="vertical-align:top;padding-right:8px;">
+                      <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:12px;">
+                        <div style="font-size:12px;color:#6b7280;">Header-From</div>
+                        <div style="font-size:14px;font-weight:600;color:#111827;">{{ header_from }}</div>
+                      </div>
+                    </td>
+                    <td class="mobile-stack" style="vertical-align:top;padding-left:8px;">
+                      <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:12px;">
+                        <div style="font-size:12px;color:#6b7280;">Source IP</div>
+                        <div style="font-size:14px;font-weight:600;color:#111827;">{{ source_ip }}{% if src_country %} • {{ src_country }}{% endif %}{% if asn %} • ASN {{ asn }}{% endif %}</div>
+                      </div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <!-- Signals -->
+            <tr>
+              <td style="padding:4px 20px 0 20px;">
+                <div style="font-weight:700;color:#111827;margin-bottom:8px;">Signal Breakdown</div>
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+                  <tr>
+                    <td style="border:1px solid #e5e7eb;padding:10px;background:#f9fafb;width:35%;font-size:12px;color:#6b7280;">SPF</td>
+                    <td style="border:1px solid #e5e7eb;padding:10px;font-size:14px;">
+                      {{ spf_result|upper }}{% if spf_domain %} (domain: {{ spf_domain }}){% endif %}{% if spf_aligned is not none %} • Alignment: {{ 'aligned' if spf_aligned else 'not aligned' }}{% endif %}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="border:1px solid #e5e7eb;padding:10px;background:#f9fafb;font-size:12px;color:#6b7280;">DKIM</td>
+                    <td style="border:1px solid #e5e7eb;padding:10px;font-size:14px;">
+                      {{ dkim_result|upper }}{% if dkim_domain %} (domain: {{ dkim_domain }}{% if dkim_selector %}, s={{ dkim_selector }}{% endif %}){% endif %}{% if dkim_aligned is not none %} • Alignment: {{ 'aligned' if dkim_aligned else 'not aligned' }}{% endif %}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="border:1px solid #e5e7eb;padding:10px;background:#f9fafb;font-size:12px;color:#6b7280;">DMARC</td>
+                    <td style="border:1px solid #e5e7eb;padding:10px;font-size:14px;">
+                      {{ dmarc_disposition|capitalize }} {% if dmarc_result %} • Result: {{ dmarc_result|upper }}{% endif %}
+                    </td>
+                  </tr>
+                  {% if arc_result %}
+                  <tr>
+                    <td style="border:1px solid #e5e7eb;padding:10px;background:#f9fafb;font-size:12px;color:#6b7280;">ARC</td>
+                    <td style="border:1px solid #e5e7eb;padding:10px;font-size:14px;">{{ arc_result|upper }}</td>
+                  </tr>
+                  {% endif %}
+                  <tr>
+                    <td style="border:1px solid #e5e7eb;padding:10px;background:#f9fafb;font-size:12px;color:#6b7280;">Count / Window</td>
+                    <td style="border:1px solid #e5e7eb;padding:10px;font-size:14px;">
+                      {{ message_count }} message
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <!-- Recommended actions -->
+            <tr>
+              <td style="padding:16px 20px 0 20px;">
+                <div style="font-weight:700;color:#111827;margin-bottom:6px;">Recommended Next Steps</div>
+                <ol style="margin:0 0 0 18px;padding:0;color:#374151;font-size:14px;">
+                  {% if recommended_actions and recommended_actions|length > 0 %}
+                    {% for step in recommended_actions %}
+                      <li style="margin-bottom:6px;">{{ step }}</li>
+                    {% endfor %}
+                  {% else %}
+                    <li>Review the sender IP {{ source_ip }} and ownership (WHOIS/ASN). </li>
+                    <li>Verify SPF/DKIM alignment for <strong>{{ header_from }}</strong>. </li>
+                    <li>Check mail logs for similar attempts and increase DMARC enforcement if warranted.</li>
+                  {% endif %}
+                </ol>
+              </td>
+            </tr>
+
+            <!-- XML snippet (optional) -->
+            {% if xml_snippet %}
+            <tr>
+              <td style="padding:16px 20px 0 20px;">
+                <div style="font-weight:700;color:#111827;margin-bottom:6px;">Source XML (excerpt)</div>
+                <div style="background:#0b1020;color:#e5e7eb;border-radius:8px;padding:12px;font-family:ui-monospace,Consolas,Menlo,monospace;font-size:12px;white-space:pre-wrap;word-break:break-word;">
+{{ xml_snippet }}
+                </div>
+              </td>
+            </tr>
+            {% endif %}
+
+            <!-- Buttons -->
+            <tr>
+              <td style="padding:20px;">
+                <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;">
+                  <tr>
+                    <td style="text-align:left;">
+                      {% if triage_url %}
+                        <a href="{{ triage_url }}" class="btn" style="display:inline-block;background:{{ severity_color or '#ea580c' }};color:#ffffff;text-decoration:none;padding:10px 14px;border-radius:8px;font-weight:700;font-size:14px;">Open in Console</a>
+                      {% endif %}
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <!-- Footer -->
+            <tr>
+              <td class="divider" style="border-top:1px solid #e5e7eb;"></td>
+            </tr>
+            <tr>
+              <td style="padding:12px 20px 20px 20px;">
+                <div class="muted" style="color:#6b7280;font-size:12px;line-height:18px;">
+                  Sent by {{ org_name or 'Security' }}<br>
+                  You’re receiving this alert because you’re subscribed to spoofing detections for {{ header_from }}.
+                </div>
+              </td>
+            </tr>
+          </table>
+
+          <!-- Spacer -->
+          <div style="height:24px;line-height:24px;font-size:24px;">&zwnj;</div>
+        </td>
+      </tr>
+    </table>
+  </center>
+</body>
+</html>

@@ -11,24 +11,28 @@ Run AI-agents that will detect various suspicious activities in email metadata
 1. If only changes are in the source code, use `build-container.bat` script to create and deploy the container image <br/>
    Ensure that the env vars in script are the same as that in `create-agent.bat` script <br/>
 
+
 # Smoke Testing the code in GCS
 To ensure that container is active and is actually running good code, copy the file `smoke.xml` to the GCS storage bucket
+
 
 # Testing the code locally
 
 Run the app using the below command
 
-```
-C:\git\ai-agent-spoofing>uvicorn app.main:app --host 0.0.0.0 --port 8080
+```cmd
+set DESKTOP_ENV=true
+
+\git\ai-agent-spoofing>uvicorn app.main:app --host 0.0.0.0 --port 8080
 ```
 Ensure app is up and running `http://localhost:8080/health`<br/>
 
-To process the file `smoke.xml` locally call the endpoint `http://localhost:8080/health`
+To process the file `smoke.xml` locally call the endpoint `http://localhost:8080/local`
 
 ---------------------------------------------------
 Log of container would be in Cloud Run logs
 
-get logs locally
+Get Cloud Run logs locally
 
 ``` powershell
 gcloud logging read `
@@ -39,3 +43,4 @@ gcloud logging read `
 --format="csv(timestamp,textPayload)" `
 --limit=2000 | Out-File ai-agent-logs.txt -Encoding utf8
 ```
+

@@ -1,7 +1,12 @@
 # actions/email_action.py
 from __future__ import annotations
 from typing import List
+import uuid
 from app.patterns.core import Match, Action
+from app.utils import (
+    get_rdap_info,
+    get_country_from_rdap
+)
 
 
 class EmailAction(Action):
@@ -13,17 +18,15 @@ class EmailAction(Action):
 
     def __init__(
         self,
-        sender,                 # an instance of EmailSender (already configured & optionally connected)
+        sender,
         from_addr: str,
         to_addrs: list[str],
-        subject_prefix: str = "[DMARC Alert]",
-        use_html: bool = True,
+        subject_prefix: str = "[Spoofing Alert]",
     ):
         self.sender = sender
         self.from_addr = from_addr
         self.to_addrs = to_addrs
         self.subject_prefix = subject_prefix
-        self.use_html = use_html
 
     def run(self, matches: List[Match]) -> None:
         if not matches:
@@ -38,24 +41,38 @@ class EmailAction(Action):
                 f"- {m.message} | from={md.get('header_from')} src={md.get('source_ip')} "
                 f"(dkim={md.get('dkim')}, spf={md.get('spf')})"
             )
-        text_body = "Alerts:\n" + "\n".join(lines)
+            template_vars: dict[str, str] = {}
+            rdap_info = get_rdap_info(m.metadata.get("source_ip"))
+            template_vars["alert_id"] = str(uuid.uuid4())
+            template_vars["severity"] = m.severity
+            template_vars["severity_color"] = "#dc2626"
+            template_vars["environment"] = m.environment
+            template_vars["header_from"] = md.get("header_from")
+            template_vars["source_ip"] = md.get("source_ip")
+            template_vars["src_country"] = get_country_from_rdap(rdap_info)
+            template_vars["spf_result"] = md.get("dmarc_spf_result")
+            template_vars["spf_domain"] = md.get("auth_spf_domain")
+            template_vars["spf_aligned"] = md.get("spf_aligned", False)
+            template_vars["dkim_result"] = md.get("dmarc_dkim_result")
+            template_vars["dkim_domain"] = md.get("auth_dkim_domain")
+            template_vars["dkim_selector"] = md.get("auth_dkim_selector")
+            template_vars["dkim_aligned"] = md.get("dkim_aligned", False)
+            template_vars["dmarc_result"] = md.get("dmarc_result")
+            template_vars["dmarc_disposition"] = md.get("dmarc_disposition")
+            template_vars["message_count"] = len(matches)
+            template_vars["xml_snippet"] = "\n".join(lines)
+            template_vars["triage_url"] = f"https://example.com/triage/{m.pattern_name}"
+            template_vars["logo_url"] = "https://www.lappuai.com/assets/lappu-ai-logo-final.jpg"
+            template_vars["org_name"] = "Lappu AI"
 
-        if self.use_html:
-            html_items = "".join(
-                f"<li><b>{m.message}</b> — from=<code>{m.metadata.get('header_from')}</code>, "
-                f"src=<code>{m.metadata.get('source_ip')}</code>, "
-                f"dkim=<code>{m.metadata.get('dkim')}</code>, "
-                f"spf=<code>{m.metadata.get('spf')}</code></li>"
-                for m in matches
+            # Google map URL
+            # https://www.google.com/maps/@LATITUDE,LONGITUDE,ZOOM_LEVELz
+
+            result = self.sender.send(
+                from_addr=self.from_addr,
+                to=self.to_addrs,
+                subject=subject,
+                html_template_path="app/templates/spoofing-alert.html",
+                template_vars=template_vars
             )
-            html_body = f"<h3>Alerts</h3><ul>{html_items}</ul>"
-        else:
-            html_body = None
-
-        self.sender.send(
-            from_addr=self.from_addr,
-            to=self.to_addrs,
-            subject=subject,
-            text=text_body,
-            html=html_body,
-        )
+            print(f"EmailAction: sent {result} emails to {self.to_addrs}")

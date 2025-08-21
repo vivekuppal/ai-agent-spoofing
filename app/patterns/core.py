@@ -16,6 +16,7 @@ class Match:
     message: str
     metadata: Dict[str, Any]    # e.g., {"source_ip": "...", "header_from": "..."}
     xml_snippet: Optional[str] = None  # optional raw XML string for reference
+    environment: str = "production"
 
 
 @runtime_checkable
@@ -41,7 +42,8 @@ class XmlPatternEngine:
     and dispatch to actions.
     Uses iterparse so files can be very large.
     """
-    def __init__(self, patterns: Iterable[Pattern], routes: Dict[str, List[Action]]):
+    def __init__(self, patterns: Iterable[Pattern],
+                 routes: Dict[str, List[Action]]):
         """
         routes: {pattern_name: [Action, ...]}
         """
@@ -91,9 +93,11 @@ class XmlPatternEngine:
         context = ET.iterparse(io.StringIO(xml_text), events=("end",))
         for event, elem in context:
             if elem.tag.lower().endswith("record"):
+                print(f"Found <record> element: {elem.tag}")
                 snippet = ET.tostring(elem, encoding="unicode", method="xml")
 
                 for p in self._patterns:  # using the same registered patterns
+                    print(f"Testing pattern: {p.name}")
                     found = p.test(elem)
                     if not found:
                         continue
@@ -107,6 +111,7 @@ class XmlPatternEngine:
 
                     # route to actions bound to this pattern
                     for action in self._routes.get(p.name, []):
+                        print(f"Running action: {action.name} for pattern: {p.name}")
                         action.run(found)
 
                     matches_count += len(found)

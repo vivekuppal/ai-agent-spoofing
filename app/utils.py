@@ -4,6 +4,8 @@ import os
 from typing import Any
 from functools import lru_cache
 from typing import Optional, Callable
+import ipaddress
+from ipwhois import IPWhois
 
 from fastapi import Request
 from google.auth.transport import requests as google_requests
@@ -47,6 +49,53 @@ async def verify_pubsub_jwt_if_required(request: Request) -> None:
 
 class SecretNotFound(Exception):
     """Raised when no source (env, GSM, default) yields a value."""
+
+
+@lru_cache(maxsize=256)
+def get_rdap_info(ip_address: str) -> dict:
+    """
+    Fetch RDAP information for an IPv4 or IPv6 address.
+
+    Args:
+        ip_address (str): The IP address (IPv4 or IPv6).
+
+    Returns:
+        dict: RDAP information, or error message if query fails.
+    """
+    try:
+        # Validate the IP address
+        ipaddress.ip_address(ip_address)
+
+        obj = IPWhois(ip_address)
+        rdap_result = obj.lookup_rdap(depth=1)
+        return rdap_result
+    except ValueError:
+        return {"error": f"Invalid IP address format: {ip_address}"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def get_country_from_rdap(rdap_info: dict) -> str:
+    """
+    Extract the country code from RDAP information.
+
+    Args:
+        rdap_info (dict): RDAP information dictionary.
+
+    Returns:
+        str: Country code (e.g. 'US', 'DE'), or error message.
+    """
+
+    # First, try top-level ASN country code
+    country = rdap_info.get("asn_country_code")
+    if country:
+        return country
+
+    # Fallback: sometimes in network objects
+    try:
+        return rdap_info["network"]["country"]
+    except KeyError:
+        return "Country not found"
 
 
 @lru_cache(maxsize=256)

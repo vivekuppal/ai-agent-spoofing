@@ -1,3 +1,6 @@
+# emailsender.py
+# A robust SMTP email sender with optional DKIM signing and persistent
+# connection support.
 import smtplib
 import ssl
 import socket
@@ -13,6 +16,7 @@ class EmailSender:
       - robust error handling
       - context manager + persistent connection for bulk sends
       - optional DKIM signing (dkimpy)
+      - Jinja2 HTML template rendering (file path or raw template string)
     """
 
     # Reasonable defaults for DKIM header set
@@ -91,11 +95,13 @@ class EmailSender:
 
             if self.use_ssl:
                 server = smtplib.SMTP_SSL(
-                    self.smtp_host, self.smtp_port, timeout=self.timeout, context=context
+                    self.smtp_host, self.smtp_port, timeout=self.timeout,
+                    context=context
                 )
             else:
                 server = smtplib.SMTP(
-                    self.smtp_host, self.smtp_port, timeout=self.timeout, local_hostname=self.client_hostname
+                    self.smtp_host, self.smtp_port, timeout=self.timeout,
+                    local_hostname=self.client_hostname
                 )
                 server.ehlo()
                 if self.use_tls:
@@ -103,7 +109,6 @@ class EmailSender:
                     server.ehlo()
             print(f"Connecting to SMTP server {self.smtp_host}:{self.smtp_port}")
             print(f"Using TLS: {self.use_tls}, SSL: {self.use_ssl}")
-            print(f"username: {self.username} password len: {len(self.password) if self.password else 'None'}")
             server.login(self.username, self.password)
             return server
 
@@ -231,19 +236,65 @@ class EmailSender:
                 maintype, subtype = self._guess_mime(p)
                 with open(p, "rb") as f:
                     data = f.read()
-                msg.add_attachment(data, maintype=maintype, subtype=subtype, filename=p.name)
+                msg.add_attachment(data, maintype=maintype, subtype=subtype,
+                                   filename=p.name)
             elif isinstance(att, tuple) and len(att) == 3:
                 filename, data, mime = att
                 if "/" in mime:
                     maintype, subtype = mime.split("/", 1)
                 else:
                     maintype, subtype = "application", mime
-                msg.add_attachment(data, maintype=maintype, subtype=subtype, filename=filename)
+                msg.add_attachment(data, maintype=maintype, subtype=subtype,
+                                   filename=filename)
             else:
                 raise TypeError("Attachment must be a path-like or (filename, bytes, mime) tuple.")
 
         all_rcpts = to_list + cc_list + bcc_list
         return msg, all_rcpts
+
+    # ---------- Jinja2 helpers (HTML template rendering) ----------
+
+    def _render_jinja(
+        self,
+        *,
+        template_str: Optional[str] = None,
+        template_path: Optional[Union[str, Path]] = None,
+        variables: Optional[dict] = None,
+    ) -> str:
+        """
+        Render a Jinja2 template (string or file path) with auto-escaping for HTML.
+        Precedence: template_path > template_str.
+        """
+        try:
+            from jinja2 import Environment, FileSystemLoader, select_autoescape
+        except Exception as e:
+            raise RuntimeError(
+                "HTML template rendering requires Jinja2. Install with: pip install jinja2"
+            ) from e
+
+        variables = variables or {}
+
+        if template_path:
+            p = Path(template_path)
+            if not p.exists():
+                raise FileNotFoundError(f"HTML template file not found: {p}")
+            env = Environment(
+                loader=FileSystemLoader(str(p.parent)),
+                autoescape=select_autoescape(["html", "xml"]),
+                enable_async=False,
+            )
+            tmpl = env.get_template(p.name)
+            return tmpl.render(**variables)
+
+        if template_str:
+            env = Environment(
+                autoescape=select_autoescape(["html", "xml"]),
+                enable_async=False,
+            )
+            tmpl = env.from_string(template_str)
+            return tmpl.render(**variables)
+
+        raise ValueError("No template provided for rendering (template_path or template_str required).")
 
     # ---------- DKIM helpers ----------
 
@@ -308,15 +359,30 @@ class EmailSender:
         headers: Optional[dict[str, str]] = None,
         attachments: Optional[Iterable[Union[str, Path, tuple[str, bytes, str]]]] = None,
         message_id: Optional[str] = None,
+        # --- NEW: templating inputs ---
+        html_template: Optional[str] = None,                 # raw Jinja2 template string
+        html_template_path: Optional[Union[str, Path]] = None,  # path to Jinja2 template file
+        template_vars: Optional[dict] = None,                # variables for the Jinja2 template
     ) -> str:
         """
         Sends the message and returns its Message-ID.
         - Reuses persistent connection if available (context manager or prior connect()).
         - Adds DKIM signature if configured.
+        - HTML rendering precedence:
+            explicit `html` > `html_template_path` > `html_template`
         """
         server: Optional[smtplib.SMTP] = None
         ephemeral = True
         try:
+            print("Sending email...")
+            # --- NEW: compute HTML from template if provided and `html` not explicitly passed ---
+            if html is None and (html_template_path or html_template):
+                html = self._render_jinja(
+                    template_path=html_template_path,
+                    template_str=html_template if not html_template_path else None,
+                    variables=template_vars or {},
+                )
+
             msg, rcpts = self._build_message(
                 from_addr=from_addr,
                 to=to,
@@ -414,11 +480,6 @@ if __name__ == "__main__":
 
     print("=== EmailSender Test ===")
     try:
-        # smtp = input("SMTP server [smtp.gmail.com]: ").strip() or "smtp.gmail.com"
-        # port = int(input("SMTP port (587 TLS / 465 SSL) [587]: ").strip() or "587")
-        # username = input("Email username: ").strip()
-        # password = getpass.getpass("Email password (or App Password): ")
-
         password = ''
         smtp = 'smtp.dreamhost.com'
         port = 587
@@ -467,13 +528,26 @@ if __name__ == "__main__":
             print("Sent:", ", ".join(ids))
         else:
             to_addr = input("Send test email to (default self): ").strip() or username
-            msg_id = sender.send(
-                from_addr=username,
-                to=to_addr,
-                subject="Test EmailSender.py",
-                text="This is a test email sent using EmailSender.py",
-                html="<p>This is a <b>test email</b> sent using EmailSender.py</p>",
-            )
+
+            # --- DEMO: render from template file if present, otherwise fallback to raw HTML ---
+            tpl_path = input("Path to HTML template (Enter to skip): ").strip() or None
+            if tpl_path:
+                msg_id = sender.send(
+                    from_addr=username,
+                    to=to_addr,
+                    subject="Test EmailSender.py (Jinja2 Template)",
+                    html_template_path=tpl_path,
+                    template_vars={"name": "Analyst", "alert_id": "ALRT-12345"},
+                )
+            else:
+                msg_id = sender.send(
+                    from_addr=username,
+                    to=to_addr,
+                    subject="Test EmailSender.py",
+                    text="This is a test email sent using EmailSender.py",
+                    html="<p>This is a <b>test email</b> sent using EmailSender.py</p>",
+                )
+
             print(f"Email sent successfully! Message-ID: {msg_id}")
 
     except Exception as e:
@@ -494,3 +568,7 @@ if __name__ == "__main__":
 # )
 # s.send(from_addr="you@example.com", to="alice@example.com", subject="Signed",
 #        text="Hi")
+
+
+# Message marked as spam by mail channels
+# EmailAction: sent <175581259673.4988.17970016430144852112@work-mobile.mynetworksettings.com> emails to ['vivek.uppal@gmail.com', 'vivek@lappuai.com']

@@ -42,7 +42,12 @@ def get_email_sender() -> EmailSender:
 def _create_email_sender() -> EmailSender:
     print("Creating EmailSender instance")
     username = os.getenv("SMTP_USER", "webapp@lappuai.com")
-    password = get_secret(secret_name="SMTP_PASSWORD", project_id="lappuai-prod", default=None)
+    if (os.getenv("DESKTOP_ENV", "false").lower() in {"1", "true", "yes"}):
+        password = os.getenv("SMTP_PASSWORD", "")
+    else:
+        password = get_secret(secret_name="SMTP_PASSWORD",
+                              project_id="lappuai-prod", default=None)
+
     print(f"username: {username} password len: {len(password) if password else 'None'}")
     return EmailSender(
         smtp_host=os.getenv("SMTP_HOST", "smtp.dreamhost.com"),
