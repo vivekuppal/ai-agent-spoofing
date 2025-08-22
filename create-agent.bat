@@ -18,11 +18,11 @@ REM Ingest bucket (no gs://)
 set BUCKET=lai-dmarc-aggregate-reports
 
 REM Component / service name (deploy one per run)
-set SERVICE=ai-agent-spoofing-2
+set SERVICE=ai-agent-spoofing
 
 REM Pub/Sub plumbing
-set TOPIC=ai-agent-spoofing-2-topic
-set SUB=ai-agent-spoofing-2-sub
+set TOPIC=ai-agent-spoofing-topic
+set SUB=ai-agent-spoofing-sub
 
 REM GCS object prefix to trigger on (can be empty for all)
 set OBJECT_PREFIX=reports/
@@ -77,14 +77,36 @@ REM (Optional) Force-create Pub/Sub service identity if it hasn't appeared yet
 call gcloud beta services identity create --service=pubsub.googleapis.com --project "%PROJECT_ID%"
 @echo on
 
-echo completed creation of identity
+echo Completed creation of identity
 
-REM 1) Create service accounts
-echo Creating service accounts
-call gcloud iam service-accounts create "%RUNTIME_SA_NAME%" --project "%PROJECT_ID%" --display-name "AI Spoofing Agent Runtime SA" 
+REM 1) Check for existence of service accounts and create if missing
+echo Check service accounts
+
+for /f %%I in ('call gcloud iam service-accounts list --project %PROJECT_ID% --filter="email:%RUNTIME_SA_NAME%" --format^=value^(email^)') do set "RESULT1=%%I"
+
+if defined RESULT1 (
+    echo Service account %RUNTIME_SA_NAME% already exists.
+) else (
+    echo Creating service account %RUNTIME_SA_NAME%...
+    call gcloud iam service-accounts create "%RUNTIME_SA_NAME%" ^
+        --project "%PROJECT_ID%" ^
+        --display-name "AI Spoofing Agent Runtime SA"
+)
+
 @echo on
 timeout /t 5
-call gcloud iam service-accounts create "%PUSH_SA_NAME%"    --project "%PROJECT_ID%" --display-name "Pub/Sub Push Spoofing Invoker SA"
+
+for /f %%I in ('call gcloud iam service-accounts list --project %PROJECT_ID% --filter="email:%PUSH_SA_NAME%" --format^=value^(email^)') do set "RESULT2=%%I"
+
+if defined RESULT2 (
+    echo Service account %PUSH_SA_NAME% already exists.
+) else (
+    echo Creating service account %PUSH_SA_NAME%...
+    call gcloud iam service-accounts create "%PUSH_SA_NAME%" ^
+        --project "%PROJECT_ID%" ^
+        --display-name "Pub/Sub Push Spoofing Invoker SA"
+)
+
 @echo on
 timeout /t 5
 REM 2) Bucket-scoped IAM for Runtime SA
@@ -103,10 +125,13 @@ call gcloud iam service-accounts add-iam-policy-binding "%PUSH_SA%" ^
   --project "%PROJECT_ID%"
 
 REM 4) Build container (Cloud Build) and push to gcr.io
+@echo on
 echo Building image %IMAGE%
 call gcloud builds submit --tag "%IMAGE%" --project "%PROJECT_ID%"
+timeout /t 5
 
 REM 5) Deploy Cloud Run (private)
+@echo on
 echo Deploying Cloud Run service %SERVICE%
 call gcloud run deploy "%SERVICE%" ^
   --image "%IMAGE%" ^
@@ -136,11 +161,16 @@ if /I "%ENV_REQUIRE_JWT%"=="true" (
 
 REM 9) Pub/Sub topic + DLQ
 echo Creating Pub/Sub topic %TOPIC% and DLQ %DLQ_TOPIC%
+REM TODO: check if the topic already exists, do not create if it does
 call gcloud pubsub topics create "%TOPIC%"    --project "%PROJECT_ID%"
+REM TODO: check if the topic already exists, do not create if it does
 call gcloud pubsub topics create "%DLQ_TOPIC%" --project "%PROJECT_ID%"
 
 REM 10) Allow service agent to publish to DLQ
 call gcloud pubsub topics add-iam-policy-binding "%DLQ_TOPIC%" --member="serviceAccount:%PUBSUB_SERVICE_AGENT%" --role="roles/pubsub.publisher" --project "%PROJECT_ID%"
+
+call gcloud secrets add-iam-policy-binding SMTP_PASSWORD --member="serviceAccount:%PUBSUB_SERVICE_AGENT%" --role="roles/secretmanager.secretAccessor" --project "%PROJECT_ID%"
+call gcloud secrets add-iam-policy-binding SMTP_PASSWORD --member="serviceAccount:%RUNTIME_SA%" --role="roles/secretmanager.secretAccessor" --project "%PROJECT_ID%"
 
 @echo on
 REM 11) Create filtered push subscription with OIDC auth + DLQ

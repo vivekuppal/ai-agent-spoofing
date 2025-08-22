@@ -8,18 +8,15 @@ from typing import Any, Dict, Optional, Tuple
 from fastapi import FastAPI, Request, HTTPException, Response
 from google.cloud import storage
 
-from .processor import process_file  # <-- your logic
-from .utils import verify_pubsub_jwt_if_required, json_dumps
+from app.emailsender import EmailSender
+from app.processor import process_file
+from app.utils import verify_pubsub_jwt_if_required, json_dumps, get_secret
 
 logger = logging.getLogger("uvicorn")
 logger.setLevel(logging.INFO)
 
-# TO DO: determine if we are copying the input file in the output
-# or if we are just processing the input file and writing the output.
-
-
 # Config via env
-COMPONENT_NAME = os.getenv("COMPONENT_NAME", "ai-component")
+COMPONENT_NAME = os.getenv("COMPONENT_NAME", "ai-agent-spoofing")
 EXPECTED_EVENT_TYPE = os.getenv("EXPECTED_EVENT_TYPE", "OBJECT_FINALIZE")
 OBJECT_PREFIX = os.getenv("OBJECT_PREFIX", "")  # e.g. "reports/"
 OUTPUT_PREFIX = os.getenv("OUTPUT_PREFIX", f"outputs/{COMPONENT_NAME}/")
@@ -30,6 +27,35 @@ app = FastAPI(title=COMPONENT_NAME)
 
 # Lazily created GCS client
 _storage_client: Optional[storage.Client] = None
+_email_sender: Optional[EmailSender] = None
+
+
+def get_email_sender() -> EmailSender:
+    """ Returns a configured EmailSender instance.
+    """
+    global _email_sender
+    if _email_sender is None:
+        _email_sender = _create_email_sender()
+    return _email_sender
+
+
+def _create_email_sender() -> EmailSender:
+    print("Creating EmailSender instance")
+    username = os.getenv("SMTP_USER", "webapp@lappuai.com")
+    if (os.getenv("DESKTOP_ENV", "false").lower() in {"1", "true", "yes"}):
+        password = os.getenv("SMTP_PASSWORD", "")
+    else:
+        password = get_secret(secret_name="SMTP_PASSWORD",
+                              project_id="lappuai-prod", default=None)
+
+    print(f"username: {username} password len: {len(password) if password else 'None'}")
+    return EmailSender(
+        smtp_host=os.getenv("SMTP_HOST", "smtp.dreamhost.com"),
+        smtp_port=int(os.getenv("SMTP_PORT", "587")),
+        username=username,
+        password=password,
+        use_tls=bool(os.getenv("USE_TLS", "true").lower() in ["true", "1"]),
+    )
 
 
 def get_storage() -> storage.Client:
@@ -123,6 +149,34 @@ def health():
     return {"status": "ok", "component": COMPONENT_NAME}
 
 
+@app.get("/clear-gsm-cache")
+def clear_cached_secret(secret_name: Optional[str] = None,
+                        project_id: Optional[str] = None):
+    """
+    Clear the cached Google Cloud Secret Manager secrets.
+    Useful if you know a secret has changed and you want to force a reload.
+    """
+    from .utils import clear_gsm_cache
+    clear_gsm_cache(secret_name, project_id)
+    return {"status": "ok", "message": "GSM cache cleared."}
+
+
+@app.get("/local")
+async def local_test():
+    """
+    Process the file smoke.xml locally"""
+    with open("smoke.xml", "rb") as f:
+        content_bytes = f.read()
+    result = await process_file(
+            content=content_bytes,
+            context={
+                "email_sender": get_email_sender(),
+            }
+        )
+    print("Local test result:", result)
+    return {"status": "ok", "component": COMPONENT_NAME, "result": result}
+
+
 @app.post("/")  # Pub/Sub push target
 async def pubsub_push(request: Request):
     # Optional: Verify OIDC token if you also configured Cloud Run to allow unauthenticated
@@ -165,7 +219,7 @@ async def pubsub_push(request: Request):
 
     # 2) Process
     try:
-        # TO DO: Pass the content as filename instead of bytes
+        # create email sender instance and pass it to the processor
         result = await process_file(
             content=content_bytes,
             context={
@@ -174,6 +228,7 @@ async def pubsub_push(request: Request):
                 "generation": generation,
                 "component": COMPONENT_NAME,
                 "raw_event": raw,
+                "email_sender": get_email_sender(),
             }
         )
     except Exception as e:
@@ -191,7 +246,8 @@ async def pubsub_push(request: Request):
                 data=json_dumps({"result": result, "source": idem_key}),
                 content_type="application/json",
             )
-            logger.info(json_dumps({"msg": "output_written", "uri": f"gs://{bucket}/{out_name}"}))
+            logger.info(json_dumps({"msg": "output_written",
+                                    "uri": f"gs://{bucket}/{out_name}"}))
     except Exception:
         logger.exception("output_write_failed")
         raise HTTPException(status_code=500, detail="Output write failed")
