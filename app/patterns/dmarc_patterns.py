@@ -4,6 +4,7 @@ import os
 from typing import List
 from dataclasses import dataclass
 from app.patterns.core import Match, Pattern
+from defusedxml import ElementTree as ET
 
 
 @dataclass
@@ -95,5 +96,7 @@ class BothFailPolicyPattern(Pattern):
                 "auth_dkim_result": dkim_auth_result_val,
                 "auth_dkim_domain": dkim_auth_domain_val,
                 "auth_dkim_selector": dkim_auth_selector_val,
+                "xml_snippet": ET.tostring(record_elem, encoding="unicode",
+                                           method="xml")
             }
         )]

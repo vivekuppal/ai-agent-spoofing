@@ -49,11 +49,11 @@
                   <div style="display:flex;align-items:center;">
                     <span style="display:inline-block;font-weight:700;font-size:18px;color:#111827;">Potential Spoofing Detected</span>
                     <span style="display:inline-block;margin-left:10px;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:700;color:#ffffff;background:{{ severity_color or '#ea580c' }};">
-                      {{ severity|upper }}
+                      {{ severity|upper }} 
                     </span>
                     {% if environment %}
                       <span style="display:inline-block;margin-left:10px;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;color:#111827;background:#f3f4f6;">
-                        {{ environment }}
+                        [{{ environment }}] 
                       </span>
                     {% endif %}
                   </div>
@@ -86,24 +86,30 @@
             <!-- Signals -->
             <tr>
               <td style="padding:4px 20px 0 20px;">
-                <div style="font-weight:700;color:#111827;margin-bottom:8px;">Signal Breakdown</div>
+                <div style="font-weight:700;color:#111827;margin-bottom:8px;">Alert Summary</div>
+                <div style="border:1px solid #e5e7eb;padding:10px;font-size:14px;">
+                  <pre style="margin:0;font-family:ui-monospace,Consolas,Menlo,monospace;font-size:12px;white-space:pre;word-break:normal;overflow:auto;line-height:1.35;">
+                      {{ summary}}
+                  </pre>
+                </div>
+                <div style="font-weight:700;color:#111827;margin-bottom:8px;">Alert Details</div>
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
                   <tr>
                     <td style="border:1px solid #e5e7eb;padding:10px;background:#f9fafb;width:35%;font-size:12px;color:#6b7280;">SPF</td>
                     <td style="border:1px solid #e5e7eb;padding:10px;font-size:14px;">
-                      {{ spf_result|upper }}{% if spf_domain %} (domain: {{ spf_domain }}){% endif %}{% if spf_aligned is not none %} • Alignment: {{ 'aligned' if spf_aligned else 'not aligned' }}{% endif %}
+                      {{ spf_result|upper }}{% if spf_domain %} (domain: {{ spf_domain }}){% endif %}{% if spf_aligned is not none %} <br/>• Alignment: {{ 'aligned' if spf_aligned else 'not aligned' }}{% endif %}
                     </td>
                   </tr>
                   <tr>
                     <td style="border:1px solid #e5e7eb;padding:10px;background:#f9fafb;font-size:12px;color:#6b7280;">DKIM</td>
                     <td style="border:1px solid #e5e7eb;padding:10px;font-size:14px;">
-                      {{ dkim_result|upper }}{% if dkim_domain %} (domain: {{ dkim_domain }}{% if dkim_selector %}, s={{ dkim_selector }}{% endif %}){% endif %}{% if dkim_aligned is not none %} • Alignment: {{ 'aligned' if dkim_aligned else 'not aligned' }}{% endif %}
+                      {{ dkim_result|upper }}{% if dkim_domain %} (domain: {{ dkim_domain }}{% if dkim_selector %}, s={{ dkim_selector }}{% endif %}){% endif %}{% if dkim_aligned is not none %} <br/>• Alignment: {{ 'aligned' if dkim_aligned else 'not aligned' }}{% endif %}
                     </td>
                   </tr>
                   <tr>
                     <td style="border:1px solid #e5e7eb;padding:10px;background:#f9fafb;font-size:12px;color:#6b7280;">DMARC</td>
                     <td style="border:1px solid #e5e7eb;padding:10px;font-size:14px;">
-                      {{ dmarc_disposition|capitalize }} {% if dmarc_result %} • Result: {{ dmarc_result|upper }}{% endif %}
+                      {{ dmarc_disposition|capitalize }} {% if dmarc_result %} <br/>• Result: {{ dmarc_result|upper }}{% endif %}
                     </td>
                   </tr>
                   {% if arc_result %}
@@ -113,7 +119,7 @@
                   </tr>
                   {% endif %}
                   <tr>
-                    <td style="border:1px solid #e5e7eb;padding:10px;background:#f9fafb;font-size:12px;color:#6b7280;">Count / Window</td>
+                    <td style="border:1px solid #e5e7eb;padding:10px;background:#f9fafb;font-size:12px;color:#6b7280;">Count</td>
                     <td style="border:1px solid #e5e7eb;padding:10px;font-size:14px;">
                       {{ message_count }} message
                     </td>
@@ -132,7 +138,7 @@
                       <li style="margin-bottom:6px;">{{ step }}</li>
                     {% endfor %}
                   {% else %}
-                    <li>Review the sender IP {{ source_ip }} and ownership (WHOIS/ASN). </li>
+                    <li>Review the sender IP <a href="https://whois.arin.net/rest/ip/{{ source_ip }}" target="_blank" rel="noopener noreferrer" style="color:#111827;text-decoration:underline;"> {{ source_ip }}</a> and ownership (WHOIS/ASN). </li>
                     <li>Verify SPF/DKIM alignment for <strong>{{ header_from }}</strong>. </li>
                     <li>Check mail logs for similar attempts and increase DMARC enforcement if warranted.</li>
                   {% endif %}
@@ -159,7 +165,7 @@
                   <tr>
                     <td style="text-align:left;">
                       {% if triage_url %}
-                        <a href="{{ triage_url }}" class="btn" style="display:inline-block;background:{{ severity_color or '#ea580c' }};color:#ffffff;text-decoration:none;padding:10px 14px;border-radius:8px;font-weight:700;font-size:14px;">Open in Console</a>
+                        <a href="{{ triage_url }}" class="btn" style="display:inline-block;background:{{ severity_color or '#ea580c' }};color:#ffffff;text-decoration:none;padding:10px 14px;border-radius:8px;font-weight:700;font-size:14px;">View in Console</a>
                       {% endif %}
                     </td>
                   </tr>

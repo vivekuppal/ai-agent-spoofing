@@ -38,7 +38,6 @@ def build_engine_with_email(
                 from_addr=username,
                 to_addrs=to_list,
                 subject_prefix="[Spoofing Alert]",
-                use_html=True,
             ),
             # You can add more actions here, e.g., WebhookAction(), LogAction(), QueueAction()
         ]
@@ -49,16 +48,16 @@ def build_engine_with_email(
 
 if __name__ == "__main__":
     engine = build_engine_with_email(
-        smtp_host="smtp.dreamhost.com",
+        smtp_host="smtp.google.com",
         smtp_port=587,
-        username="webapp@lappuai.com",
+        username="vivek@lappuai.com",
         password="",
         to_list=["vivek.uppal@gmail.com", "vivek@lappuai.com"],
     )
 
     # Scan one or many XML files
     total = 0
-    path = Path("c://j/noco-1.xml");
+    path = Path("c://j/noco-1.xml")
     print(f"processing file: {path}")
     total += engine.scan_file(path)
     print(f"Processed matches: {total}")

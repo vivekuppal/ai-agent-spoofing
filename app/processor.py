@@ -23,7 +23,7 @@ async def process_file(content: bytes, context: Dict[str, Any]) -> Dict[str, Any
             BothFailPolicyPattern.name: [
                 EmailAction(
                     sender=context["email_sender"],
-                    from_addr="webapp@lappuai.com",
+                    from_addr="vivek@lappuai.com",
                     to_addrs=["vivek.uppal@gmail.com", "vivek@lappuai.com"],
                     subject_prefix="[Spoofing Alert]"
                 )
@@ -85,11 +85,11 @@ def example_in_memory_xml_with_email():
     """
 
     # --- configure EmailSender (fill in your real SMTP settings) ---
-    smtp_host = "smtp.dreamhost.com"       # or your provider
+    smtp_host = "smtp.gmail.com"       # or your provider
     smtp_port = 587
     username  = "alerts@yourdomain.com"
     password  = "APP_PASSWORD"
-    to_list   = ["you@yourdomain.com"]     # one or more recipients
+    to_list   = ["you@yourdomain.com"]
 
     # We keep a persistent connection for the demo run
     with EmailSender(
@@ -112,7 +112,6 @@ def example_in_memory_xml_with_email():
                     from_addr=username,
                     to_addrs=to_list,
                     subject_prefix="[Spoofing Alert]",
-                    use_html=True,
                 )
             ]
         }

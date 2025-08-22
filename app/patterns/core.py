@@ -93,7 +93,7 @@ class XmlPatternEngine:
         context = ET.iterparse(io.StringIO(xml_text), events=("end",))
         for event, elem in context:
             if elem.tag.lower().endswith("record"):
-                print(f"Found <record> element: {elem.tag}")
+                # print(f"Found <record> element: {elem.tag}")
                 snippet = ET.tostring(elem, encoding="unicode", method="xml")
 
                 for p in self._patterns:  # using the same registered patterns

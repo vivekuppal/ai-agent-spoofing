@@ -8,6 +8,7 @@ from email.message import EmailMessage
 from email.utils import make_msgid, formatdate
 from pathlib import Path
 from typing import Iterable, Optional, Union
+from app.filters import pretty_xml
 
 
 class EmailSender:
@@ -283,6 +284,8 @@ class EmailSender:
                 autoescape=select_autoescape(["html", "xml"]),
                 enable_async=False,
             )
+            env.filters["pretty_xml"] = pretty_xml
+
             tmpl = env.get_template(p.name)
             return tmpl.render(**variables)
 
@@ -291,6 +294,7 @@ class EmailSender:
                 autoescape=select_autoescape(["html", "xml"]),
                 enable_async=False,
             )
+            env.filters["pretty_xml"] = pretty_xml
             tmpl = env.from_string(template_str)
             return tmpl.render(**variables)
 
@@ -374,7 +378,7 @@ class EmailSender:
         server: Optional[smtplib.SMTP] = None
         ephemeral = True
         try:
-            print("Sending email...")
+            # print("Sending email...")
             # --- NEW: compute HTML from template if provided and `html` not explicitly passed ---
             if html is None and (html_template_path or html_template):
                 html = self._render_jinja(
@@ -481,7 +485,7 @@ if __name__ == "__main__":
     print("=== EmailSender Test ===")
     try:
         password = ''
-        smtp = 'smtp.dreamhost.com'
+        smtp = 'smtp.gmail.com'
         port = 587
         use_ssl = (port == 465)
         use_tls = (port == 587)
@@ -554,7 +558,7 @@ if __name__ == "__main__":
         print(f"Failed: {e}")
 
 # Example of persistent connection usage
-# with EmailSender("smtp.dreamhost.com", 587, "you@domain.com", "APP_PASSWORD",
+# with EmailSender("smtp.gmail.com", 587, "you@domain.com", "APP_PASSWORD",
 #                  use_tls=True) as s:
 #     for r in ["a@x.com", "b@x.com", "c@x.com"]:
 #         s.send(from_addr="you@domain.com", to=r, subject="Hi", text="Hello!")
