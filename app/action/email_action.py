@@ -60,8 +60,8 @@ class EmailAction(Action):
             template_vars["dmarc_result"] = md.get("dmarc_result")
             template_vars["dmarc_disposition"] = md.get("dmarc_disposition")
             template_vars["message_count"] = len(matches)
-            template_vars["xml_snippet"] = "\n".join(lines)
-            template_vars["triage_url"] = f"https://example.com/triage/{m.pattern_name}"
+            template_vars["summary"] = "\n".join(lines)
+            template_vars["xml_snippet"] = md.get("xml_snippet")
             template_vars["logo_url"] = "https://www.lappuai.com/assets/lappu-ai-logo-final.jpg"
             template_vars["org_name"] = "Lappu AI"
 
