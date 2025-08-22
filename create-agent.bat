@@ -49,6 +49,7 @@ REM PUBSUB_ALLOWED_AUDIENCE is set AFTER deploy since we need the service URL.
 
 REM ========== DERIVED ==========
 for /f %%P in ('call gcloud projects describe "%PROJECT_ID%" --format^=value^(projectNumber^) -q') do set "PROJECT_NUMBER=%%P"
+REM All application specific privileges should be granted to the runtime service account.
 set RUNTIME_SA=%RUNTIME_SA_NAME%@%PROJECT_ID%.iam.gserviceaccount.com
 set PUSH_SA=%PUSH_SA_NAME%@%PROJECT_ID%.iam.gserviceaccount.com
 set PUBSUB_SERVICE_AGENT=service-%PROJECT_NUMBER%@gcp-sa-pubsub.iam.gserviceaccount.com

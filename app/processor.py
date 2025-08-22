@@ -87,9 +87,9 @@ def example_in_memory_xml_with_email():
     # --- configure EmailSender (fill in your real SMTP settings) ---
     smtp_host = "smtp.gmail.com"       # or your provider
     smtp_port = 587
-    username  = "alerts@yourdomain.com"
-    password  = "APP_PASSWORD"
-    to_list   = ["you@yourdomain.com"]
+    username = "alerts@yourdomain.com"
+    password = "APP_PASSWORD"
+    to_list = ["you@yourdomain.com"]
 
     # We keep a persistent connection for the demo run
     with EmailSender(
@@ -104,7 +104,8 @@ def example_in_memory_xml_with_email():
         # Register pattern(s)
         patterns = [BothFailPolicyPattern()]
 
-        # Route pattern -> actions (here: send a single summarized email per matched record)
+        # Route pattern -> actions (here: send a single summarized
+        # email per matched record)
         routes = {
             "both_fail_policy": [
                 EmailAction(

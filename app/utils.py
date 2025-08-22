@@ -1,9 +1,8 @@
 # app/utils.py
 import json
 import os
-from typing import Any
 from functools import lru_cache
-from typing import Optional, Callable
+from typing import Optional, Callable, Any
 import ipaddress
 from ipwhois import IPWhois
 
@@ -12,10 +11,12 @@ from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token
 
 
-# Toggle with env; when Cloud Run requires authentication, external verification is optional.
+# Toggle with env; when Cloud Run requires authentication,
+# external verification is optional.
 REQUIRE_JWT = os.getenv("REQUIRE_JWT", "false").lower() in {"1", "true", "yes"}
 # If you set a custom audience in your subscription's OIDC token, put it here.
-PUBSUB_ALLOWED_AUDIENCE = os.getenv("PUBSUB_ALLOWED_AUDIENCE")  # defaults to URL when unset
+# defaults to URL when unset
+PUBSUB_ALLOWED_AUDIENCE = os.getenv("PUBSUB_ALLOWED_AUDIENCE")
 
 
 try:
@@ -139,13 +140,12 @@ def _fetch_from_gsm(
         return None
 
 
-def clear_gsm_cache(secret_name: Optional[str] = None,
-                    project_id: Optional[str] = None) -> None:
+def clear_gsm_cache() -> None:
     """
     Clear the cached GSM secrets.
     Useful if you know a secret has changed and you want to force a reload.
     """
-    _fetch_from_gsm.cache_clear(secret_name, project_id)
+    _fetch_from_gsm.cache_clear()
 
 
 def get_secret(

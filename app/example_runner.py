@@ -48,7 +48,7 @@ def build_engine_with_email(
 
 if __name__ == "__main__":
     engine = build_engine_with_email(
-        smtp_host="smtp.google.com",
+        smtp_host="smtp.gmail.com",
         smtp_port=587,
         username="vivek@lappuai.com",
         password="",

@@ -22,6 +22,7 @@ Run the app using the below command
 
 ```cmd
 set DESKTOP_ENV=true
+set SMTP_PASSWORD=
 
 \git\ai-agent-spoofing>uvicorn app.main:app --host 0.0.0.0 --port 8080
 ```
@@ -43,4 +44,3 @@ gcloud logging read `
 --format="csv(timestamp,textPayload)" `
 --limit=2000 | Out-File ai-agent-logs.txt -Encoding utf8
 ```
-

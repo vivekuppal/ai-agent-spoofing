@@ -150,14 +150,13 @@ def health():
 
 
 @app.get("/clear-gsm-cache")
-def clear_cached_secret(secret_name: Optional[str] = None,
-                        project_id: Optional[str] = None):
+def clear_cached_secrets():
     """
     Clear the cached Google Cloud Secret Manager secrets.
     Useful if you know a secret has changed and you want to force a reload.
     """
-    from .utils import clear_gsm_cache
-    clear_gsm_cache(secret_name, project_id)
+    from app.utils import clear_gsm_cache
+    clear_gsm_cache()
     return {"status": "ok", "message": "GSM cache cleared."}
 
 
