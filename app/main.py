@@ -244,6 +244,7 @@ async def pubsub_push(request: Request):
             client = get_storage()
             bucket_ref = client.bucket(bucket)
             out_blob = bucket_ref.blob(out_name)
+            logger.info("Writing output file to: gs://{bucket}/{out_name}")
             out_blob.upload_from_string(
                 data=json_dumps({"result": result, "source": idem_key}),
                 content_type="application/json",
