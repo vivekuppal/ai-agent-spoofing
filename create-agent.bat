@@ -25,7 +25,7 @@ set TOPIC=ai-agent-spoofing-topic
 set SUB=ai-agent-spoofing-sub
 
 REM GCS object prefix to trigger on (can be empty for all)
-set OBJECT_PREFIX=reports/
+set OBJECT_PREFIX=spoofing/
 
 REM Subscription filter:
 REM Use doubled quotes inside the value to survive CMD parsing.
@@ -207,7 +207,6 @@ if "%OBJECT_PREFIX%"=="" (
 ) else (
   call gcloud storage buckets notifications create "gs://%BUCKET%" --topic="%TOPIC%" --event-types=OBJECT_FINALIZE --payload-format=json --object-prefix="%OBJECT_PREFIX%" --project="%PROJECT_ID%"
 )
-
 
 
 echo.

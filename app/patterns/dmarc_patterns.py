@@ -33,6 +33,8 @@ class BothFailPolicyPattern(Pattern):
             return []
 
         def child_text(parent, tag):
+            if parent is None:
+                return None
             for c in parent:
                 if c.tag.lower().endswith(tag):
                     return (c.text or "").strip()

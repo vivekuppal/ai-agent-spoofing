@@ -51,14 +51,17 @@ class XmlPatternEngine:
         self._routes = routes
 
     def scan_file(self, path: Path) -> int:
-        # import io
+        """
+        Stream-parse XML from a file and dispatch actions on matches.
+        """
         from defusedxml import ElementTree as ET  # safe XML parser
 
         matches_count = 0
         # iterparse for memory efficiency; free elements after use
         context = ET.iterparse(str(path), events=("end",))
         for event, elem in context:
-            # DMARC aggregate: <record> appears under <feedback>-><record> but we don't assume exact root
+            # DMARC aggregate: <record> appears under <feedback>-><record>
+            # but we don't assume exact root
             if elem.tag.lower().endswith("record"):
                 # (Optional) capture snippet: serialize minimal element to string
                 snippet = ET.tostring(elem, encoding="unicode", method="xml")
