@@ -210,11 +210,14 @@ async def pubsub_push(request: Request):
 
     # 1) Read object (by generation when available)
     try:
-        content_bytes = _download_exact_generation(bucket, object_id, generation)
+        content_bytes = _download_exact_generation(bucket,
+                                                   object_id,
+                                                   generation)
     except Exception as e:
         logger.exception("download_failed")
         # Non-2xx => Pub/Sub will retry
-        raise HTTPException(status_code=500, detail=f"Download failed: {e}")
+        raise HTTPException(status_code=500,
+                            detail=f"Download failed: {e}") from e
 
     # 2) Process
     try:
