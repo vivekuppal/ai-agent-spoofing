@@ -7,7 +7,8 @@ from typing import Any, Dict, Optional, Tuple
 
 from fastapi import FastAPI, Request, HTTPException, Response
 from google.cloud import storage
-
+from google.cloud.exceptions import Conflict
+from google.api_core.exceptions import PreconditionFailed
 from app.emailsender import EmailSender
 from app.processor import process_file
 from app.utils import verify_pubsub_jwt_if_required, json_dumps, get_secret
@@ -197,10 +198,31 @@ async def pubsub_push(request: Request):
             return Response(status_code=e.status_code)
         raise
 
+    out_name = f"{OUTPUT_PREFIX}{object_id}.gen{generation if generation is not None else 'live'}.json" if OUTPUT_PREFIX else None
+    # Pub/Sub retry counter (1 on first delivery)
+    delivery_attempt = int(request.headers.get("X-Goog-Delivery-Attempt", "1"))
+
+    if OUTPUT_PREFIX and delivery_attempt > 1:
+        # Short circuit duplicate events, if previous succeeded
+        try:
+            storage = get_storage()
+            b = storage.bucket(bucket)
+            if b.blob(out_name).exists():   # inexpensive metadata GET
+                logger.info(json_dumps({
+                    "msg": "duplicate_detected_skip",
+                    "delivery_attempt": delivery_attempt,
+                    "uri": f"gs://{bucket}/{out_name}",
+                }))
+                return Response(status_code=204)  # ack immediately; do nothing
+        except Exception as ex:
+            # If this check fails, just continue; the write below still has a precondition.
+            logger.exception(f"duplicate_check_failed: {ex}")
+
     # Idempotency key (store/consult in your DB in future step)
     idem_key = f"{bucket}/{object_id}#{generation if generation is not None else 'live'}"
     logger.info(json_dumps({
         "msg": "event_received",
+        "delivery_attempt": delivery_attempt,
         "component": COMPONENT_NAME,
         "bucket": bucket,
         "object": object_id,
@@ -244,16 +266,27 @@ async def pubsub_push(request: Request):
             client = get_storage()
             bucket_ref = client.bucket(bucket)
             out_blob = bucket_ref.blob(out_name)
-            logger.info("Writing output file to: gs://{bucket}/{out_name}")
-            out_blob.upload_from_string(
-                data=json_dumps({"result": result, "source": idem_key}),
-                content_type="application/json",
-            )
-            logger.info(json_dumps({"msg": "output_written",
-                                    "uri": f"gs://{bucket}/{out_name}"}))
-    except Exception:
+            logger.info(f"Writing output file to: gs://{bucket}/{out_name}")
+
+            try:
+                # Only create if it does NOT already exist.
+                out_blob.upload_from_string(
+                    data=json_dumps({"result": result, "source": idem_key}),
+                    content_type="application/json",
+                    if_generation_match=0,          # <<< precondition: object must not exist
+                )
+                logger.info(json_dumps({"msg": "output_written",
+                                        "uri": f"gs://{bucket}/{out_name}"}))
+            except (PreconditionFailed, Conflict):
+                # Object already exists — skip writing and move on.
+                logger.info(json_dumps({
+                    "msg": "output_skipped_exists",
+                    "reason": "object_already_exists",
+                    "uri": f"gs://{bucket}/{out_name}"
+                }))
+    except Exception as ex:
         logger.exception("output_write_failed")
-        raise HTTPException(status_code=500, detail="Output write failed")
+        raise HTTPException(status_code=500, detail="Output write failed") from ex
 
     # Return 204 (no body) to ack push message immediately.
     return Response(status_code=204)

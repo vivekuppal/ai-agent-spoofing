@@ -68,11 +68,11 @@ class EmailAction(Action):
             # Google map URL
             # https://www.google.com/maps/@LATITUDE,LONGITUDE,ZOOM_LEVELz
 
-            result = self.sender.send(
+            self.sender.send(
                 from_addr=self.from_addr,
                 to=self.to_addrs,
                 subject=subject,
                 html_template_path="app/templates/spoofing-alert.html",
                 template_vars=template_vars
             )
-            print(f"EmailAction: sent {result} emails to {self.to_addrs}")
+            print(f"EmailAction: sent emails to {self.to_addrs}")

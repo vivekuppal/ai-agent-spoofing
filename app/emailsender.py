@@ -108,8 +108,8 @@ class EmailSender:
                 if self.use_tls:
                     server.starttls(context=context)
                     server.ehlo()
-            print(f"Connecting to SMTP server {self.smtp_host}:{self.smtp_port}")
-            print(f"Using TLS: {self.use_tls}, SSL: {self.use_ssl}")
+            # print(f"Connecting to SMTP server {self.smtp_host}:{self.smtp_port}")
+            # print(f"Using TLS: {self.use_tls}, SSL: {self.use_ssl}")
             server.login(self.username, self.password)
             return server
 
