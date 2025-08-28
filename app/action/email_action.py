@@ -5,7 +5,8 @@ import uuid
 from app.patterns.core import Match, Action
 from app.utils import (
     get_rdap_info,
-    get_country_from_rdap
+    get_country_from_rdap,
+    get_hostname_from_ip
 )
 
 
@@ -42,7 +43,7 @@ class EmailAction(Action):
                 f"(dkim={md.get('dkim')}, spf={md.get('spf')})"
             )
             template_vars: dict[str, str] = {}
-            rdap_info = get_rdap_info(m.metadata.get("source_ip"))
+            rdap_info = get_rdap_info(md.get("source_ip"))
             template_vars["alert_id"] = str(uuid.uuid4())
             template_vars["severity"] = m.severity
             template_vars["severity_color"] = "#dc2626"
@@ -64,6 +65,7 @@ class EmailAction(Action):
             template_vars["xml_snippet"] = md.get("xml_snippet")
             template_vars["logo_url"] = "https://www.lappuai.com/assets/lappu-ai-logo-final.jpg"
             template_vars["org_name"] = "Lappu AI"
+            template_vars["hostname"] = get_hostname_from_ip(md.get("source_ip"))
 
             # Google map URL
             # https://www.google.com/maps/@LATITUDE,LONGITUDE,ZOOM_LEVELz

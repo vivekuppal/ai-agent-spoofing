@@ -1,6 +1,7 @@
 # app/utils.py
 import json
 import os
+import socket
 from functools import lru_cache
 from typing import Optional, Callable, Any
 import ipaddress
@@ -208,6 +209,27 @@ def get_secret(
         raise SecretNotFound(f"No secret found from {', '.join(sources)} and no default provided.")
 
     return None
+
+
+def get_hostname_from_ip(ip_address: str) -> str:
+    """
+    Get the hostname for a given IP address.
+
+    Args:
+        ip_address (str): The IP address (IPv4 or IPv6).
+
+    Returns:
+        str: The hostname, or the IP address itself if lookup fails.
+    """
+    try:
+        hostname, _, _ = socket.gethostbyaddr(ip_address)
+        return hostname
+    except socket.herror:
+        # No hostname found
+        return ip_address
+    except Exception as e:
+        # Other errors like invalid IP format
+        return f"Error: {e}"
 
 
 # -----------------------

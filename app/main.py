@@ -179,9 +179,8 @@ async def local_test():
 
 @app.post("/")  # Pub/Sub push target
 async def pubsub_push(request: Request):
-    # Optional: Verify OIDC token if you also configured Cloud Run to allow unauthenticated
-    # or you want to double-check audience/issuer. If your service requires auth,
-    # Cloud Run will already enforce it before reaching the app.
+    """ Process the push notification from pub sub
+    """
     await verify_pubsub_jwt_if_required(request)
 
     try:
