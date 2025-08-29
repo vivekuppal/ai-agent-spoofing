@@ -33,7 +33,7 @@ class EmailAction(Action):
         if not matches:
             return
 
-        subject = f"{self.subject_prefix} {matches[0].pattern_name} x{len(matches)}"
+        subject = f"{self.subject_prefix} {matches[0].metadata.get("header_from")} {matches[0].pattern_name} x{len(matches)}"
         # Keep it simple; swap with Jinja later if you want rich templates
         lines = []
         for m in matches:
