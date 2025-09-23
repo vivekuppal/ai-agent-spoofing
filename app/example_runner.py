@@ -4,7 +4,6 @@ from typing import List
 from patterns.core import XmlPatternEngine
 from patterns.dmarc_patterns import BothFailPolicyPattern
 from action.email_action import EmailAction
-
 from emailsender import EmailSender
 
 # An example of parsing a XML file while looking for patterns of spoofing

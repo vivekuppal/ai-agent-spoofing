@@ -2,6 +2,7 @@
 from __future__ import annotations
 from typing import List
 import uuid
+from emailsender import (EmailSender)
 from app.patterns.core import Match, Action
 from app.utils import (
     get_rdap_info,
@@ -19,7 +20,7 @@ class EmailAction(Action):
 
     def __init__(
         self,
-        sender,
+        sender: EmailSender,
         from_addr: str,
         to_addrs: list[str],
         subject_prefix: str = "[Spoofing Alert]",
@@ -39,8 +40,8 @@ class EmailAction(Action):
         for m in matches:
             md = m.metadata
             lines.append(
-                f"- {m.message} | from={md.get('header_from')} src={md.get('source_ip')} "
-                f"(dkim={md.get('dkim')}, spf={md.get('spf')})"
+                f"{m.message} | from={md.get('header_from')} src={md.get('source_ip')} "
+                f"(dkim={md.get('dmarc_dkim_result')}, spf={md.get('dmarc_spf_result')})"
             )
             template_vars: dict[str, str] = {}
             rdap_info = get_rdap_info(md.get("source_ip"))
