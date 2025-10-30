@@ -2,7 +2,7 @@
 from __future__ import annotations
 from typing import List
 import uuid
-from emailsender import (EmailSender)
+from app.emailsender import (EmailSender)
 from app.patterns.core import Match, Action
 from app.utils import (
     get_rdap_info,
@@ -23,12 +23,14 @@ class EmailAction(Action):
         sender: EmailSender,
         from_addr: str,
         to_addrs: list[str],
+        template_path: str,
         subject_prefix: str = "[Spoofing Alert]",
     ):
         self.sender = sender
         self.from_addr = from_addr
         self.to_addrs = to_addrs
         self.subject_prefix = subject_prefix
+        self.template_path = template_path
 
     def run(self, matches: List[Match]) -> None:
         if not matches:
@@ -61,7 +63,9 @@ class EmailAction(Action):
             template_vars["dkim_aligned"] = md.get("dkim_aligned", False)
             template_vars["dmarc_result"] = md.get("dmarc_result")
             template_vars["dmarc_disposition"] = md.get("dmarc_disposition")
-            template_vars["message_count"] = len(matches)
+            template_vars["auth_dkim_pass_subdomains"] = md.get("dkim_pass_domains")
+            template_vars["auth_spf_pass_subdomains"] = md.get("spf_pass_domains")
+            template_vars["message_count"] = md.get("message_count")
             template_vars["summary"] = "\n".join(lines)
             template_vars["xml_snippet"] = md.get("xml_snippet")
             template_vars["logo_url"] = "https://www.lappuai.com/assets/lappu-ai-logo-final.jpg"
@@ -75,7 +79,7 @@ class EmailAction(Action):
                 from_addr=self.from_addr,
                 to=self.to_addrs,
                 subject=subject,
-                html_template_path="app/templates/spoofing-alert.html",
+                html_template_path=self.template_path,
                 template_vars=template_vars
             )
             print(f"EmailAction: sent emails to {self.to_addrs}")

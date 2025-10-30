@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en" style="margin:0;padding:0;">
+<head>
+  <meta charset="utf-8">
+  <meta name="x-apple-disable-message-reformatting">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Domain Misconfiguration Alert</title>
+  <style>
+    @media (max-width: 640px) {
+      .container { width: 100% !important; }
+      .mobile-stack { display: block !important; width: 100% !important; }
+      .btn { display: block !important; width: 100% !important; margin-bottom: 8px !important; }
+    }
+    @media (prefers-color-scheme: dark) {
+      body, .card { background-color: #0b0c0f !important; color: #e5e7eb !important; }
+      .muted { color: #a1a1aa !important; }
+      .divider { border-color: #1f2937 !important; }
+    }
+    .chip { display:inline-block;margin-left:10px;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:700;color:#ffffff; }
+  </style>
+</head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#111827;">
+  <center style="width:100%;background:#f3f4f6;padding:24px 0;">
+    <table role="presentation" class="container" cellpadding="0" cellspacing="0" width="600" style="width:600px;max-width:100%;">
+      <tr>
+        <td style="padding:0 16px;">
+          <!-- Header -->
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td style="padding:16px 0;text-align:left;">
+                {% if logo_url %}
+                  <img src="{{ logo_url }}" alt="{{ org_name or 'Security' }}" height="28" style="display:inline-block;border:0;outline:none;text-decoration:none;height:28px;">
+                {% else %}
+                  <span style="font-weight:700;font-size:18px;color:#111827;">{{ org_name or 'Security' }}</span>
+                {% endif %}
+              </td>
+              <td style="padding:16px 0;text-align:right;">
+                <span style="font-size:12px;color:#6b7280;">Alert ID&nbsp;{{ alert_id }}</span>
+              </td>
+            </tr>
+          </table>
+
+          <!-- Card -->
+          <table role="presentation" class="card" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">
+            <tr>
+              <td style="padding:20px 20px 8px 20px;">
+                <div style="font-size:14px;line-height:20px;color:#374151;">
+                  <div style="display:flex;align-items:center;">
+                    <span style="display:inline-block;font-weight:700;font-size:18px;color:#111827;">Domain Misconfiguration Detected</span>
+                    <span class="chip" style="background:{{ severity_color or '#ea580c' }};">{{ severity|upper }}</span>
+                    {% if environment %}
+                      <span style="display:inline-block;margin-left:10px;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;color:#111827;background:#f3f4f6;">
+                        [{{ environment }}]
+                      </span>
+                    {% endif %}
+                  </div>
+                  <div style="margin-top:6px;font-size:13px;color:#374151;">
+                    DMARC <strong>failed (DKIM+SPF)</strong> for the Header-From domain({{ header_from }}), but both <strong>DKIM</strong> and <strong>SPF</strong> passed on a <em>subdomain</em>.
+                  </div>
+                </div>
+              </td>
+            </tr>
+
+            <!-- Summary row -->
+            <tr>
+              <td style="padding:0 20px 8px 20px;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td class="mobile-stack" style="vertical-align:top;padding-right:8px;">
+                      <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:12px;">
+                        <div style="font-size:12px;color:#6b7280;">Header-From</div>
+                        <div style="font-size:14px;font-weight:600;color:#111827;">{{ header_from }}</div>
+                      </div>
+                    </td>
+                    <td class="mobile-stack" style="vertical-align:top;padding-left:8px;">
+                      <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:12px;">
+                        <div style="font-size:12px;color:#6b7280;">Source IP</div>
+                        <div style="font-size:14px;font-weight:600;color:#111827;">
+                          {{ source_ip }}
+                          {% if hostname %} • {{ hostname }}{% endif %}
+                          {% if src_country %} • {{ src_country }}{% endif %}
+                          {% if asn %} • ASN {{ asn }}{% endif %}
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <!-- Signals -->
+            <tr>
+              <td style="padding:4px 20px 0 20px;">
+                <div style="font-weight:700;color:#111827;margin-bottom:8px;">Alert Summary</div>
+                <div style="border:1px solid #e5e7eb;padding:10px;font-size:14px;">
+                  <pre style="margin:0;font-family:ui-monospace,Consolas,Menlo,monospace;font-size:12px;white-space:pre;word-break:normal;overflow:auto;line-height:1.35;">
+{{ summary or ("DMARC policy_evaluated shows DKIM=fail and SPF=fail for " ~ header_from ~
+" while auth_results indicate DKIM/SPF passes on a subdomain. Likely strict alignment (adkim/aspf='s') causing misalignment.") }}
+                  </pre>
+                </div>
+
+                <div style="font-weight:700;color:#111827;margin:12px 0 8px;">Alert Details</div>
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+                  <tr>
+                    <td style="border:1px solid #e5e7eb;padding:10px;background:#f9fafb;width:35%;font-size:12px;color:#6b7280;">SPF (DMARC)</td>
+                    <td style="border:1px solid #e5e7eb;padding:10px;font-size:14px;">
+                      {{ spf_result|upper if spf_result else 'UNKNOWN' }}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="border:1px solid #e5e7eb;padding:10px;background:#f9fafb;font-size:12px;color:#6b7280;">DKIM (DMARC)</td>
+                    <td style="border:1px solid #e5e7eb;padding:10px;font-size:14px;">
+                      {{ dkim_result|upper if dkim_result else 'UNKNOWN' }}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="border:1px solid #e5e7eb;padding:10px;background:#f9fafb;font-size:12px;color:#6b7280;">DMARC</td>
+                    <td style="border:1px solid #e5e7eb;padding:10px;font-size:14px;">
+                      {{ dmarc_disposition|capitalize if dmarc_disposition else 'Unknown' }}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="border:1px solid #e5e7eb;padding:10px;background:#f9fafb;font-size:12px;color:#6b7280;">Subdomain Auth Passes</td>
+                    <td style="border:1px solid #e5e7eb;padding:10px;font-size:14px;">
+                      {% set has_any = false %}
+                      {% if auth_spf_pass_subdomains and auth_spf_pass_subdomains|length > 0 %}
+                        <div style="margin-bottom:6px;"><strong>SPF:</strong></div>
+                        <ul style="margin:0 0 8px 18px;padding:0;">
+                          {% for s in auth_spf_pass_subdomains %}
+                            {% set has_any = true %}
+                            <li>{{ s.domain }}{% if s.scope %} (scope: {{ s.scope }}){% endif %}</li>
+                          {% endfor %}
+                        </ul>
+                      {% endif %}
+                      {% if auth_dkim_pass_subdomains and auth_dkim_pass_subdomains|length > 0 %}
+                        <div style="margin-bottom:6px;"><strong>DKIM:</strong></div>
+                        <ul style="margin:0 0 8px 18px;padding:0;">
+                          {% for d in auth_dkim_pass_subdomains %}
+                            {% set has_any = true %}
+                            <li>{{ d.domain }}{% if d.selector %} (s={{ d.selector }}){% endif %}</li>
+                          {% endfor %}
+                        </ul>
+                      {% endif %}
+                      {% if not has_any %}
+                        <em>No subdomain pass details available.</em>
+                      {% endif %}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="border:1px solid #e5e7eb;padding:10px;background:#f9fafb;font-size:12px;color:#6b7280;">Count</td>
+                    <td style="border:1px solid #e5e7eb;padding:10px;font-size:14px;">
+                      {{ message_count }} message{{ '' if message_count == 1 else 's' }}
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <!-- Recommended actions -->
+            <tr>
+              <td style="padding:16px 20px 0 20px;">
+                <div style="font-weight:700;color:#111827;margin-bottom:6px;">Recommended Next Steps</div>
+                <ol style="margin:0 0 0 18px;padding:0;color:#374151;font-size:14px;">
+                  {% if recommended_actions and recommended_actions|length > 0 %}
+                    {% for step in recommended_actions %}
+                      <li style="margin-bottom:6px;">{{ step }}</li>
+                    {% endfor %}
+                  {% else %}
+                    <li>Confirm <strong>DMARC alignment mode</strong> for <code>{{ header_from }}</code>: current <code>adkim=s</code>, <code>aspf=s</code>.</li>
+                    <li>EITHER align mail/auth to the exact Header-From domain (same <code>d=</code> for DKIM and <code>mfrom</code> for SPF), OR relax alignment by setting <code>adkim=r</code> and <code>aspf=r</code>.</li>
+                    <li>Verify updated DNS and re-test delivery/auth from the same sending service (e.g., {{ auth_spf_pass_subdomains[0].domain if auth_spf_pass_subdomains }})</li>
+                  {% endif %}
+                </ol>
+              </td>
+            </tr>
+
+            <!-- XML snippet (optional) -->
+            {% if xml_snippet %}
+            <tr>
+              <td style="padding:16px 20px 0 20px;">
+                <div style="font-weight:700;color:#111827;margin-bottom:6px;">Source XML (excerpt)</div>
+                <div style="background:#0b1020;color:#e5e7eb;border-radius:8px;padding:12px;font-family:ui-monospace,Consolas,Menlo,monospace;font-size:12px;white-space:pre-wrap;word-break:break-word;">
+{{ xml_snippet }}
+                </div>
+              </td>
+            </tr>
+            {% endif %}
+
+            <!-- Buttons -->
+            <tr>
+              <td style="padding:20px;">
+                <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;">
+                  <tr>
+                    <td style="text-align:left;">
+                      {% if triage_url %}
+                        <a href="{{ triage_url }}" class="btn" style="display:inline-block;background:{{ severity_color or '#ea580c' }};color:#ffffff;text-decoration:none;padding:10px 14px;border-radius:8px;font-weight:700;font-size:14px;">View in Console</a>
+                      {% endif %}
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <!-- Footer -->
+            <tr>
+              <td class="divider" style="border-top:1px solid #e5e7eb;"></td>
+            </tr>
+            <tr>
+              <td style="padding:12px 20px 20px 20px;">
+                <div class="muted" style="color:#6b7280;font-size:12px;line-height:18px;">
+                  Sent by {{ org_name or 'Security' }}<br>
+                  You’re receiving this alert because you’re subscribed to <strong>domain misconfiguration</strong> detections for {{ header_from }}.
+                </div>
+              </td>
+            </tr>
+          </table>
+
+          <div style="height:24px;line-height:24px;font-size:24px;">&zwnj;</div>
+        </td>
+      </tr>
+    </table>
+  </center>
+</body>
+</html>

@@ -1,10 +1,33 @@
 # patterns/dmarc_patterns.py
 from __future__ import annotations
 import os
-from typing import List
+from typing import List, Optional
 from dataclasses import dataclass
-from app.patterns.core import Match, Pattern
 from defusedxml import ElementTree as ET
+from app.patterns.core import Match, Pattern
+
+
+def _find_first(elem, tag_endswith: str):
+    for c in elem.iter():
+        if c.tag.lower().endswith(tag_endswith):
+            return c
+    return None
+
+
+def _text_of_first_child(parent, tag_endswith: str) -> Optional[str]:
+    if parent is None:
+        return None
+    for c in parent:
+        if c.tag.lower().endswith(tag_endswith):
+            return (c.text or "").strip()
+    return None
+
+
+def _safe_int(s: Optional[str], default: int = 1) -> int:
+    try:
+        return int(s) if s is not None else default
+    except Exception:
+        return default
 
 
 @dataclass
@@ -15,6 +38,12 @@ class BothFailPolicyPattern(Pattern):
     """
     name: str = "SPF_AND_DKIM_FAIL"
     severity: str = "high"
+
+    def __init__(
+        self,
+        fall_through: bool = True,
+    ):
+        Pattern.__init__(self, fall_through=fall_through)
 
     def test(self, record_elem) -> List[Match]:
         def text_of(child_tag: str) -> str | None:
@@ -57,6 +86,11 @@ class BothFailPolicyPattern(Pattern):
             elif t.endswith("header_from"):
                 header_from = (c.text or "").strip()
 
+        # --- extract <row><count> for message_count ---
+        row_node = _find_first(record_elem, "row")
+        count_text = _text_of_first_child(row_node, "count")
+        message_count = _safe_int(count_text, default=1)
+
         auth_results = None
         for c in record_elem.iter():
             t = c.tag.lower()
@@ -95,6 +129,7 @@ class BothFailPolicyPattern(Pattern):
                 "dkim_aligned": dmarc_dkim_val != "fail",
                 "auth_spf_result": spf_auth_result_val,
                 "auth_spf_domain": spf_auth_domain_val,
+                "message_count": message_count,
                 "auth_dkim_result": dkim_auth_result_val,
                 "auth_dkim_domain": dkim_auth_domain_val,
                 "auth_dkim_selector": dkim_auth_selector_val,

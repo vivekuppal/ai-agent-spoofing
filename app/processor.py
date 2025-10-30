@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict
 from app.patterns.core import XmlPatternEngine
 from app.patterns.dmarc_patterns import BothFailPolicyPattern
+from app.patterns.dmarc_strict_alignment_misconfig import StrictAlignmentMisconfigurationPattern
 from app.action.email_action import EmailAction
 from app.emailsender import EmailSender
 
@@ -18,14 +19,25 @@ async def process_file(content: bytes, context: Dict[str, Any]) -> Dict[str, Any
     # If the content is not valid XML, it will raise an exception.
     try:
         # Create an XML pattern engine with the registered patterns
-        patterns = [BothFailPolicyPattern()]
+        patterns = [StrictAlignmentMisconfigurationPattern(fall_through=False),
+                    BothFailPolicyPattern()]
         routes = {
+            StrictAlignmentMisconfigurationPattern.name: [
+                EmailAction(
+                    sender=context["email_sender"],
+                    from_addr="from_addr=vivek@lappuai.com",
+                    to_addrs=["vivek.uppal@gmail.com", "vivek@lappuai.com"],
+                    subject_prefix="[Spoofing Alert]",
+                    template_path="app/templates/domain-misconfiguration-alert.html",
+                )
+            ],
             BothFailPolicyPattern.name: [
                 EmailAction(
                     sender=context["email_sender"],
                     from_addr="vivek@lappuai.com",
                     to_addrs=["vivek.uppal@gmail.com", "vivek@lappuai.com"],
-                    subject_prefix="[Spoofing Alert]"
+                    subject_prefix="[Spoofing Alert]",
+                    template_path="app/templates/spoofing-alert.html",
                 )
             ]
         }

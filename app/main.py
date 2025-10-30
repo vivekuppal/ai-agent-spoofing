@@ -165,7 +165,7 @@ def clear_cached_secrets():
 async def local_test():
     """
     Process the file smoke.xml locally"""
-    with open("smoke.xml", "rb") as f:
+    with open("smoke1.xml", "rb") as f:
         content_bytes = f.read()
     result = await process_file(
             content=content_bytes,

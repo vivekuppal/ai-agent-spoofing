@@ -24,6 +24,14 @@ class Pattern(Protocol):
     """Pattern checks a single <record> element and returns 0..n matches."""
     name: str
     severity: str
+    fall_through: bool = True  # whether to continue with other patterns after match
+
+    def __init__(
+        self,
+        fall_through: bool = True,
+    ):
+        self.fall_through = fall_through
+
     def test(self, record_elem) -> List[Match]: ...
 
 
@@ -81,6 +89,9 @@ class XmlPatternEngine:
                         action.run(found)
                     matches_count += len(found)
 
+                    if not p.fall_through:
+                        break  # stop testing further patterns for this record
+
                 # important: clear to release memory
                 elem.clear()
 
@@ -118,6 +129,9 @@ class XmlPatternEngine:
                         action.run(found)
 
                     matches_count += len(found)
+
+                    if not p.fall_through:
+                        break  # stop testing further patterns for this record
 
                 elem.clear()  # free memory
         print(f"scan_string - Total matches found: {matches_count}")
