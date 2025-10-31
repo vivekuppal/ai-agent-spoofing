@@ -27,7 +27,7 @@ async def process_file(content: bytes, context: Dict[str, Any]) -> Dict[str, Any
                     sender=context["email_sender"],
                     from_addr="from_addr=vivek@lappuai.com",
                     to_addrs=["vivek.uppal@gmail.com", "vivek@lappuai.com"],
-                    subject_prefix="[Spoofing Alert]",
+                    subject_prefix="[Misconfiguration Alert]",
                     template_path="app/templates/domain-misconfiguration-alert.html",
                 )
             ],
