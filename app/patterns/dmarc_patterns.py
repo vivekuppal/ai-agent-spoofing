@@ -5,27 +5,12 @@ from typing import List, Optional
 from dataclasses import dataclass
 from defusedxml import ElementTree as ET
 from app.patterns.core import Match, Pattern
-
-
-def _find_first(elem, tag_endswith: str):
-    for c in elem.iter():
-        if c.tag.lower().endswith(tag_endswith):
-            return c
-    return None
-
-
-def _text_of_first_child(parent, tag_endswith: str) -> Optional[str]:
-    if parent is None:
-        return None
-    for c in parent:
-        if c.tag.lower().endswith(tag_endswith):
-            return (c.text or "").strip()
-    return None
+from app.xml import dmarc  # <-- your shared XML helpers
 
 
 def _safe_int(s: Optional[str], default: int = 1) -> int:
     try:
-        return int(s) if s is not None else default
+        return int(s) if s not in (None, "") else default
     except Exception:
         return default
 
@@ -39,79 +24,47 @@ class BothFailPolicyPattern(Pattern):
     name: str = "SPF_AND_DKIM_FAIL"
     severity: str = "high"
 
-    def __init__(
-        self,
-        fall_through: bool = True,
-    ):
+    def __init__(self, fall_through: bool = True):
         Pattern.__init__(self, fall_through=fall_through)
 
     def test(self, record_elem) -> List[Match]:
-        def text_of(child_tag: str) -> str | None:
-            for c in record_elem.iter():
-                if c.tag.lower().endswith(child_tag):
-                    return (c.text or "").strip()
-            return None
+        # Detect default namespace from this subtree (works even without root)
+        ns = dmarc.detect_default_ns_from_elem(record_elem)
 
-        # Narrow search to the policy_evaluated node (robust to namespaces)
-        policy = None
-        for c in record_elem.iter():
-            if c.tag.lower().endswith("policy_evaluated"):
-                policy = c
-                break
+        # policy_evaluated
+        policy = dmarc.find(record_elem, "policy_evaluated", ns)
         if policy is None:
             return []
 
-        def child_text(parent, tag):
-            if parent is None:
-                return None
-            for c in parent:
-                if c.tag.lower().endswith(tag):
-                    return (c.text or "").strip()
-            return None
+        dkim_val = (dmarc.text(dmarc.find(policy, "dkim", ns)) or "").lower()
+        spf_val = (dmarc.text(dmarc.find(policy, "spf", ns)) or "").lower()
+        disp_val = (dmarc.text(dmarc.find(policy, "disposition", ns)) or "").lower()
 
-        dmarc_dkim_val: str = (child_text(policy, "dkim") or "").lower()
-        dmarc_spf_val = (child_text(policy, "spf") or "").lower()
-        dmarc_disposition = (child_text(policy, "disposition") or "").lower()
-
-        if dmarc_dkim_val != "fail" or dmarc_spf_val != "fail":
+        if dkim_val != "fail" or spf_val != "fail":
             return []
 
-        # Helpful metadata for downstream actions
-        src_ip = None
-        header_from = None
-        for c in record_elem.iter():
-            t = c.tag.lower()
-            if t.endswith("source_ip"):
-                src_ip = (c.text or "").strip()
-            elif t.endswith("header_from"):
-                header_from = (c.text or "").strip()
-
-        # --- extract <row><count> for message_count ---
-        row_node = _find_first(record_elem, "row")
-        count_text = _text_of_first_child(row_node, "count")
+        # Row / counts / identifiers
+        row = dmarc.find(record_elem, "row", ns)
+        count_text = dmarc.text(dmarc.find(row, "count", ns))
         message_count = _safe_int(count_text, default=1)
 
-        auth_results = None
-        for c in record_elem.iter():
-            t = c.tag.lower()
-            if t.endswith("auth_results"):
-                auth_results = c
-                break
+        source_ip = dmarc.text(dmarc.find(row, "source_ip", ns))
 
-        dkim_auth = None
-        spf_auth = None
-        for c in auth_results.iter():
-            t = c.tag.lower()
-            if t.endswith("dkim"):
-                dkim_auth = c
-            if t.endswith("spf"):
-                spf_auth = c
-        dkim_auth_domain_val = (child_text(dkim_auth, "domain") or "").lower()
-        dkim_auth_selector_val = (child_text(dkim_auth, "selector") or "").lower()
-        dkim_auth_result_val = (child_text(dkim_auth, "result") or "").lower()
+        identifiers = dmarc.find(record_elem, "identifiers", ns)
+        header_from = dmarc.text(dmarc.find(identifiers, "header_from", ns))
 
-        spf_auth_domain_val = (child_text(spf_auth, "domain") or "").lower()
-        spf_auth_result_val = (child_text(spf_auth, "result") or "").lower()
+        # auth_results (first DKIM/SPF blocks if present)
+        auth_results = dmarc.find(record_elem, "auth_results", ns)
+
+        dkim_auth = dmarc.find(auth_results, "dkim", ns) if auth_results is not None else None
+        spf_auth = dmarc.find(auth_results, "spf", ns)  if auth_results is not None else None
+
+        dkim_auth_domain = (dmarc.text(dmarc.find(dkim_auth, "domain", ns)) or "").lower() if dkim_auth is not None else ""
+        dkim_auth_selector = (dmarc.text(dmarc.find(dkim_auth, "selector", ns)) or "").lower() if dkim_auth is not None else ""
+        dkim_auth_result = (dmarc.text(dmarc.find(dkim_auth, "result", ns)) or "").lower() if dkim_auth is not None else ""
+
+        spf_auth_domain = (dmarc.text(dmarc.find(spf_auth, "domain", ns)) or "").lower() if spf_auth is not None else ""
+        spf_auth_result = (dmarc.text(dmarc.find(spf_auth, "result", ns)) or "").lower() if spf_auth is not None else ""
 
         return [Match(
             pattern_name=self.name,
@@ -119,21 +72,21 @@ class BothFailPolicyPattern(Pattern):
             message="Both DKIM and SPF failed under policy_evaluated.",
             environment="production" if os.getenv("DESKTOP_ENV", "false").lower() not in {"1", "true", "yes"} else "development",
             metadata={
-                "source_ip": src_ip,
+                "source_ip": source_ip,
                 "header_from": header_from,
                 "dmarc_result": "fail",
-                "dmarc_disposition": dmarc_disposition,
-                "dmarc_dkim_result": dmarc_dkim_val,
-                "dmarc_spf_result": dmarc_spf_val,
-                "spf_aligned": dmarc_spf_val != "fail",
-                "dkim_aligned": dmarc_dkim_val != "fail",
-                "auth_spf_result": spf_auth_result_val,
-                "auth_spf_domain": spf_auth_domain_val,
+                "dmarc_disposition": disp_val,
+                "dmarc_dkim_result": dkim_val,
+                "dmarc_spf_result": spf_val,
+                "spf_aligned": spf_val != "fail",
+                "dkim_aligned": dkim_val != "fail",
+                "auth_spf_result": spf_auth_result,
+                "auth_spf_domain": spf_auth_domain,
                 "message_count": message_count,
-                "auth_dkim_result": dkim_auth_result_val,
-                "auth_dkim_domain": dkim_auth_domain_val,
-                "auth_dkim_selector": dkim_auth_selector_val,
-                "xml_snippet": ET.tostring(record_elem, encoding="unicode",
-                                           method="xml")
-            }
+                "auth_dkim_result": dkim_auth_result,
+                "auth_dkim_domain": dkim_auth_domain,
+                "auth_dkim_selector": dkim_auth_selector,
+                "xml_snippet": ET.tostring(record_elem, encoding="unicode", method="xml"),
+            },
         )]
+

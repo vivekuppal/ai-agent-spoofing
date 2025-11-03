@@ -62,7 +62,6 @@ class XmlPatternEngine:
         """
         Stream-parse XML from a file and dispatch actions on matches.
         """
-        from defusedxml import ElementTree as ET  # safe XML parser
 
         matches_count = 0
         # iterparse for memory efficiency; free elements after use
@@ -102,7 +101,7 @@ class XmlPatternEngine:
         Stream-parse XML from an in-memory string and dispatch actions on matches.
         Mirrors engine.scan_file() but reads from a StringIO source.
         """
-        print("Scanning in-memory XML string")
+        # print("Scanning in-memory XML string")
         matches_count = 0
         context = ET.iterparse(io.StringIO(xml_text), events=("end",))
         for event, elem in context:
@@ -125,7 +124,7 @@ class XmlPatternEngine:
 
                     # route to actions bound to this pattern
                     for action in self._routes.get(p.name, []):
-                        print(f"Running action: {action.name} for pattern: {p.name}")
+                        # print(f"Running action: {action.name} for pattern: {p.name}")
                         action.run(found)
 
                     matches_count += len(found)

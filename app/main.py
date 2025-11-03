@@ -49,7 +49,7 @@ def _create_email_sender() -> EmailSender:
         password = get_secret(secret_name="SMTP_PASSWORD",
                               project_id="lappuai-prod", default=None)
 
-    print(f"username: {username} password len: {len(password) if password else 'None'}")
+    # print(f"username: {username} password len: {len(password) if password else 'None'}")
     return EmailSender(
         smtp_host=os.getenv("SMTP_HOST", "smtp.gmail.com"),
         smtp_port=int(os.getenv("SMTP_PORT", "587")),
