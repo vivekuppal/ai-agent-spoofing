@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict
 from app.patterns.core import XmlPatternEngine
 from app.patterns.dmarc_patterns import BothFailPolicyPattern
+from app.patterns.dmarc_strict_alignment_misconfig import StrictAlignmentMisconfigurationPattern
 from app.action.email_action import EmailAction
 from app.emailsender import EmailSender
 
@@ -18,14 +19,25 @@ async def process_file(content: bytes, context: Dict[str, Any]) -> Dict[str, Any
     # If the content is not valid XML, it will raise an exception.
     try:
         # Create an XML pattern engine with the registered patterns
-        patterns = [BothFailPolicyPattern()]
+        patterns = [StrictAlignmentMisconfigurationPattern(fall_through=False),
+                    BothFailPolicyPattern()]
         routes = {
+            StrictAlignmentMisconfigurationPattern.name: [
+                EmailAction(
+                    sender=context["email_sender"],
+                    from_addr="from_addr=vivek@lappuai.com",
+                    to_addrs=["vivek.uppal@gmail.com", "vivek@lappuai.com"],
+                    subject_prefix="[Misconfiguration Alert]",
+                    template_path="app/templates/domain-misconfiguration-alert.html",
+                )
+            ],
             BothFailPolicyPattern.name: [
                 EmailAction(
                     sender=context["email_sender"],
                     from_addr="vivek@lappuai.com",
                     to_addrs=["vivek.uppal@gmail.com", "vivek@lappuai.com"],
-                    subject_prefix="[Spoofing Alert]"
+                    subject_prefix="[Spoofing Alert]",
+                    template_path="app/templates/spoofing-alert.html",
                 )
             ]
         }
@@ -124,5 +136,109 @@ def example_in_memory_xml_with_email():
         print(f"demo_in_memory_xml_with_email: dispatched {hits} match(es).")
 
 
+def example_in_memory_xml_with_no_email():
+    """
+    Demonstrates pattern detection from an in-memory DMARC XML string.
+    If BothFailPolicyPattern matches, an email is sent via EmailSender.
+    """
+    # In-memory XML with two records: one matches (both fail), one does not.
+    xml_text = """<?xml version="1.0"?>
+<feedback xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <version>1.0</version>
+  <report_metadata>
+    <org_name>Enterprise Outlook</org_name>
+    <email>dmarcreport@microsoft.com</email>
+    <report_id>ad03f6caea56488196eb6e86ced704f7</report_id>
+    <date_range>
+      <begin>1755561600</begin>
+      <end>1755648000</end>
+    </date_range>
+  </report_metadata>
+  <policy_published>
+    <domain>lappuai.com</domain>
+    <adkim>s</adkim>
+    <aspf>s</aspf>
+    <p>reject</p>
+    <sp>reject</sp>
+    <pct>100</pct>
+    <fo>1</fo>
+  </policy_published>
+  <record>
+    <row>
+      <source_ip>3.132.222.232</source_ip>
+      <count>1</count>
+      <policy_evaluated>
+        <disposition>reject</disposition>
+        <dkim>fail</dkim>
+        <spf>fail</spf>
+      </policy_evaluated>
+    </row>
+    <identifiers>
+      <envelope_to>medfordtax.com</envelope_to>
+      <envelope_from>lappuai.com</envelope_from>
+      <header_from>lappuai.com</header_from>
+    </identifiers>
+    <auth_results>
+      <dkim>
+        <domain>lappuai.com</domain>
+        <selector>dreamhost</selector>
+        <result>fail</result>
+      </dkim>
+      <spf>
+        <domain>lappuai.com</domain>
+        <scope>mfrom</scope>
+        <result>fail</result>
+      </spf>
+    </auth_results>
+  </record>
+  <record>
+    <row>
+      <source_ip>23.83.212.19</source_ip>
+      <count>1</count>
+      <policy_evaluated>
+        <disposition>none</disposition>
+        <dkim>pass</dkim>
+        <spf>pass</spf>
+      </policy_evaluated>
+    </row>
+    <identifiers>
+      <envelope_to>medfordtax.com</envelope_to>
+      <envelope_from>lappuai.com</envelope_from>
+      <header_from>lappuai.com</header_from>
+    </identifiers>
+    <auth_results>
+      <dkim>
+        <domain>lappuai.com</domain>
+        <selector>dreamhost</selector>
+        <result>pass</result>
+      </dkim>
+      <spf>
+        <domain>lappuai.com</domain>
+        <scope>mfrom</scope>
+        <result>pass</result>
+      </spf>
+    </auth_results>
+  </record>
+</feedback>
+    """
+
+    # We keep a persistent connection for the demo run
+    # Register pattern(s)
+    patterns = [BothFailPolicyPattern()]
+
+    # Route pattern -> actions (here: send a single summarized
+    # email per matched record)
+    routes = {
+        "both_fail_policy": [
+        ]
+    }
+
+    engine = XmlPatternEngine(patterns, routes)
+
+    # Run the scan on the in-memory XML string
+    hits = engine.scan_string(xml_text)
+    print(f"demo_in_memory_xml_with_email: dispatched {hits} match(es).")
+
+
 if __name__ == "__main__":
-    example_in_memory_xml_with_email()
+    example_in_memory_xml_with_no_email()

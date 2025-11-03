@@ -7,7 +7,8 @@ from typing import Any, Dict, Optional, Tuple
 
 from fastapi import FastAPI, Request, HTTPException, Response
 from google.cloud import storage
-
+from google.cloud.exceptions import Conflict
+from google.api_core.exceptions import PreconditionFailed
 from app.emailsender import EmailSender
 from app.processor import process_file
 from app.utils import verify_pubsub_jwt_if_required, json_dumps, get_secret
@@ -48,7 +49,7 @@ def _create_email_sender() -> EmailSender:
         password = get_secret(secret_name="SMTP_PASSWORD",
                               project_id="lappuai-prod", default=None)
 
-    print(f"username: {username} password len: {len(password) if password else 'None'}")
+    # print(f"username: {username} password len: {len(password) if password else 'None'}")
     return EmailSender(
         smtp_host=os.getenv("SMTP_HOST", "smtp.gmail.com"),
         smtp_port=int(os.getenv("SMTP_PORT", "587")),
@@ -164,7 +165,7 @@ def clear_cached_secrets():
 async def local_test():
     """
     Process the file smoke.xml locally"""
-    with open("smoke.xml", "rb") as f:
+    with open("smoke1.xml", "rb") as f:
         content_bytes = f.read()
     result = await process_file(
             content=content_bytes,
@@ -178,9 +179,8 @@ async def local_test():
 
 @app.post("/")  # Pub/Sub push target
 async def pubsub_push(request: Request):
-    # Optional: Verify OIDC token if you also configured Cloud Run to allow unauthenticated
-    # or you want to double-check audience/issuer. If your service requires auth,
-    # Cloud Run will already enforce it before reaching the app.
+    """ Process the push notification from pub sub
+    """
     await verify_pubsub_jwt_if_required(request)
 
     try:
@@ -197,10 +197,31 @@ async def pubsub_push(request: Request):
             return Response(status_code=e.status_code)
         raise
 
+    out_name = f"{OUTPUT_PREFIX}{object_id}.gen{generation if generation is not None else 'live'}.json" if OUTPUT_PREFIX else None
+    # Pub/Sub retry counter (1 on first delivery)
+    delivery_attempt = int(request.headers.get("X-Goog-Delivery-Attempt", "1"))
+
+    if OUTPUT_PREFIX and delivery_attempt > 1:
+        # Short circuit duplicate events, if previous succeeded
+        try:
+            storage = get_storage()
+            b = storage.bucket(bucket)
+            if b.blob(out_name).exists():   # inexpensive metadata GET
+                logger.info(json_dumps({
+                    "msg": "duplicate_detected_skip",
+                    "delivery_attempt": delivery_attempt,
+                    "uri": f"gs://{bucket}/{out_name}",
+                }))
+                return Response(status_code=204)  # ack immediately; do nothing
+        except Exception as ex:
+            # If this check fails, just continue; the write below still has a precondition.
+            logger.exception(f"duplicate_check_failed: {ex}")
+
     # Idempotency key (store/consult in your DB in future step)
     idem_key = f"{bucket}/{object_id}#{generation if generation is not None else 'live'}"
     logger.info(json_dumps({
         "msg": "event_received",
+        "delivery_attempt": delivery_attempt,
         "component": COMPONENT_NAME,
         "bucket": bucket,
         "object": object_id,
@@ -210,11 +231,14 @@ async def pubsub_push(request: Request):
 
     # 1) Read object (by generation when available)
     try:
-        content_bytes = _download_exact_generation(bucket, object_id, generation)
+        content_bytes = _download_exact_generation(bucket,
+                                                   object_id,
+                                                   generation)
     except Exception as e:
         logger.exception("download_failed")
         # Non-2xx => Pub/Sub will retry
-        raise HTTPException(status_code=500, detail=f"Download failed: {e}")
+        raise HTTPException(status_code=500,
+                            detail=f"Download failed: {e}") from e
 
     # 2) Process
     try:
@@ -241,15 +265,27 @@ async def pubsub_push(request: Request):
             client = get_storage()
             bucket_ref = client.bucket(bucket)
             out_blob = bucket_ref.blob(out_name)
-            out_blob.upload_from_string(
-                data=json_dumps({"result": result, "source": idem_key}),
-                content_type="application/json",
-            )
-            logger.info(json_dumps({"msg": "output_written",
-                                    "uri": f"gs://{bucket}/{out_name}"}))
-    except Exception:
+            logger.info(f"Writing output file to: gs://{bucket}/{out_name}")
+
+            try:
+                # Only create if it does NOT already exist.
+                out_blob.upload_from_string(
+                    data=json_dumps({"result": result, "source": idem_key}),
+                    content_type="application/json",
+                    if_generation_match=0,          # <<< precondition: object must not exist
+                )
+                logger.info(json_dumps({"msg": "output_written",
+                                        "uri": f"gs://{bucket}/{out_name}"}))
+            except (PreconditionFailed, Conflict):
+                # Object already exists — skip writing and move on.
+                logger.info(json_dumps({
+                    "msg": "output_skipped_exists",
+                    "reason": "object_already_exists",
+                    "uri": f"gs://{bucket}/{out_name}"
+                }))
+    except Exception as ex:
         logger.exception("output_write_failed")
-        raise HTTPException(status_code=500, detail="Output write failed")
+        raise HTTPException(status_code=500, detail="Output write failed") from ex
 
     # Return 204 (no body) to ack push message immediately.
     return Response(status_code=204)

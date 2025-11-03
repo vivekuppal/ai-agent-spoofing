@@ -15,7 +15,7 @@ echo PROJECT_ID=%PROJECT_ID%
 set REGION=us-east1
 
 REM Ingest bucket (no gs://)
-set BUCKET=lai-dmarc-aggregate-reports
+set BUCKET=lai-dmarc-reports
 
 REM Component / service name (deploy one per run)
 set SERVICE=ai-agent-spoofing
@@ -25,7 +25,7 @@ set TOPIC=ai-agent-spoofing-topic
 set SUB=ai-agent-spoofing-sub
 
 REM GCS object prefix to trigger on (can be empty for all)
-set OBJECT_PREFIX=reports/
+set OBJECT_PREFIX=spoofing/
 
 REM Subscription filter:
 REM Use doubled quotes inside the value to survive CMD parsing.
@@ -172,6 +172,11 @@ call gcloud pubsub topics add-iam-policy-binding "%DLQ_TOPIC%" --member="service
 
 call gcloud secrets add-iam-policy-binding SMTP_PASSWORD --member="serviceAccount:%PUBSUB_SERVICE_AGENT%" --role="roles/secretmanager.secretAccessor" --project "%PROJECT_ID%"
 call gcloud secrets add-iam-policy-binding SMTP_PASSWORD --member="serviceAccount:%RUNTIME_SA%" --role="roles/secretmanager.secretAccessor" --project "%PROJECT_ID%"
+call gcloud projects add-iam-policy-binding "%PROJECT_ID%" --member="serviceAccount:%RUNTIME_SA%" --role="roles/vpcaccess.user"
+
+REM update the existing service (safe to re-run)
+call gcloud run services update "%SERVICE%" --region "%REGION%" --project "%PROJECT_ID%" --vpc-connector "lai-vpc-connector" --vpc-egress=private-ranges-only
+
 
 @echo on
 REM 11) Create filtered push subscription with OIDC auth + DLQ
@@ -202,6 +207,7 @@ if "%OBJECT_PREFIX%"=="" (
 ) else (
   call gcloud storage buckets notifications create "gs://%BUCKET%" --topic="%TOPIC%" --event-types=OBJECT_FINALIZE --payload-format=json --object-prefix="%OBJECT_PREFIX%" --project="%PROJECT_ID%"
 )
+
 
 echo.
 echo === All set! ===

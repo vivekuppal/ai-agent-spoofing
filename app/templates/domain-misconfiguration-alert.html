@@ -4,20 +4,19 @@
   <meta charset="utf-8">
   <meta name="x-apple-disable-message-reformatting">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Spoofing Alert</title>
+  <title>Domain Misconfiguration Alert</title>
   <style>
-    /* Some clients honor embedded CSS; everything critical is also inlined */
     @media (max-width: 640px) {
       .container { width: 100% !important; }
       .mobile-stack { display: block !important; width: 100% !important; }
       .btn { display: block !important; width: 100% !important; margin-bottom: 8px !important; }
     }
-    /* Dark mode hint (best-effort) */
     @media (prefers-color-scheme: dark) {
       body, .card { background-color: #0b0c0f !important; color: #e5e7eb !important; }
       .muted { color: #a1a1aa !important; }
       .divider { border-color: #1f2937 !important; }
     }
+    .chip { display:inline-block;margin-left:10px;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:700;color:#ffffff; }
   </style>
 </head>
 <body style="margin:0;padding:0;background:#f3f4f6;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#111827;">
@@ -47,15 +46,16 @@
               <td style="padding:20px 20px 8px 20px;">
                 <div style="font-size:14px;line-height:20px;color:#374151;">
                   <div style="display:flex;align-items:center;">
-                    <span style="display:inline-block;font-weight:700;font-size:18px;color:#111827;">Potential Spoofing Detected</span>
-                    <span style="display:inline-block;margin-left:10px;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:700;color:#ffffff;background:{{ severity_color or '#ea580c' }};">
-                      {{ severity|upper }} 
-                    </span>
+                    <span style="display:inline-block;font-weight:700;font-size:18px;color:#111827;">Domain Misconfiguration Detected</span>
+                    <span class="chip" style="background:{{ severity_color or '#ea580c' }};">{{ severity|upper }}</span>
                     {% if environment %}
                       <span style="display:inline-block;margin-left:10px;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;color:#111827;background:#f3f4f6;">
-                        [{{ environment }}] 
+                        [{{ environment }}]
                       </span>
                     {% endif %}
+                  </div>
+                  <div style="margin-top:6px;font-size:13px;color:#374151;">
+                    DMARC <strong>failed (DKIM+SPF)</strong> for the Header-From domain({{ header_from }}), but both <strong>DKIM</strong> and <strong>SPF</strong> passed on a <em>subdomain</em>.
                   </div>
                 </div>
               </td>
@@ -94,39 +94,62 @@
                 <div style="font-weight:700;color:#111827;margin-bottom:8px;">Alert Summary</div>
                 <div style="border:1px solid #e5e7eb;padding:10px;font-size:14px;">
                   <pre style="margin:0;font-family:ui-monospace,Consolas,Menlo,monospace;font-size:12px;white-space:pre;word-break:normal;overflow:auto;line-height:1.35;">
-                      {{ summary}}
+{{ summary or ("DMARC policy_evaluated shows DKIM=fail and SPF=fail for " ~ header_from ~
+" while auth_results indicate DKIM/SPF passes on a subdomain. Likely strict alignment (adkim/aspf='s') causing misalignment.") }}
                   </pre>
                 </div>
-                <div style="font-weight:700;color:#111827;margin-bottom:8px;">Alert Details</div>
+
+                <div style="font-weight:700;color:#111827;margin:12px 0 8px;">Alert Details</div>
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
                   <tr>
-                    <td style="border:1px solid #e5e7eb;padding:10px;background:#f9fafb;width:35%;font-size:12px;color:#6b7280;">SPF</td>
+                    <td style="border:1px solid #e5e7eb;padding:10px;background:#f9fafb;width:35%;font-size:12px;color:#6b7280;">SPF (DMARC)</td>
                     <td style="border:1px solid #e5e7eb;padding:10px;font-size:14px;">
-                      {{ spf_result|upper }}{% if spf_domain %} (domain: {{ spf_domain }}){% endif %}{% if spf_aligned is not none %} <br/>• Alignment: {{ 'aligned' if spf_aligned else 'not aligned' }}{% endif %}
+                      {{ spf_result|upper if spf_result else 'UNKNOWN' }}
                     </td>
                   </tr>
                   <tr>
-                    <td style="border:1px solid #e5e7eb;padding:10px;background:#f9fafb;font-size:12px;color:#6b7280;">DKIM</td>
+                    <td style="border:1px solid #e5e7eb;padding:10px;background:#f9fafb;font-size:12px;color:#6b7280;">DKIM (DMARC)</td>
                     <td style="border:1px solid #e5e7eb;padding:10px;font-size:14px;">
-                      {{ dkim_result|upper }}{% if dkim_domain %} (domain: {{ dkim_domain }}{% if dkim_selector %}, s={{ dkim_selector }}{% endif %}){% endif %}{% if dkim_aligned is not none %} <br/>• Alignment: {{ 'aligned' if dkim_aligned else 'not aligned' }}{% endif %}
+                      {{ dkim_result|upper if dkim_result else 'UNKNOWN' }}
                     </td>
                   </tr>
                   <tr>
                     <td style="border:1px solid #e5e7eb;padding:10px;background:#f9fafb;font-size:12px;color:#6b7280;">DMARC</td>
                     <td style="border:1px solid #e5e7eb;padding:10px;font-size:14px;">
-                      {{ dmarc_disposition|capitalize }} {% if dmarc_result %} <br/>• Result: {{ dmarc_result|upper }}{% endif %}
+                      {{ dmarc_disposition|capitalize if dmarc_disposition else 'Unknown' }}
                     </td>
                   </tr>
-                  {% if arc_result %}
                   <tr>
-                    <td style="border:1px solid #e5e7eb;padding:10px;background:#f9fafb;font-size:12px;color:#6b7280;">ARC</td>
-                    <td style="border:1px solid #e5e7eb;padding:10px;font-size:14px;">{{ arc_result|upper }}</td>
+                    <td style="border:1px solid #e5e7eb;padding:10px;background:#f9fafb;font-size:12px;color:#6b7280;">Subdomain Auth Passes</td>
+                    <td style="border:1px solid #e5e7eb;padding:10px;font-size:14px;">
+                      {% set has_any = false %}
+                      {% if auth_spf_pass_subdomains and auth_spf_pass_subdomains|length > 0 %}
+                        <div style="margin-bottom:6px;"><strong>SPF:</strong></div>
+                        <ul style="margin:0 0 8px 18px;padding:0;">
+                          {% for s in auth_spf_pass_subdomains %}
+                            {% set has_any = true %}
+                            <li>{{ s.domain }}{% if s.scope %} (scope: {{ s.scope }}){% endif %}</li>
+                          {% endfor %}
+                        </ul>
+                      {% endif %}
+                      {% if auth_dkim_pass_subdomains and auth_dkim_pass_subdomains|length > 0 %}
+                        <div style="margin-bottom:6px;"><strong>DKIM:</strong></div>
+                        <ul style="margin:0 0 8px 18px;padding:0;">
+                          {% for d in auth_dkim_pass_subdomains %}
+                            {% set has_any = true %}
+                            <li>{{ d.domain }}{% if d.selector %} (s={{ d.selector }}){% endif %}</li>
+                          {% endfor %}
+                        </ul>
+                      {% endif %}
+                      {% if not has_any %}
+                        <em>No subdomain pass details available.</em>
+                      {% endif %}
+                    </td>
                   </tr>
-                  {% endif %}
                   <tr>
                     <td style="border:1px solid #e5e7eb;padding:10px;background:#f9fafb;font-size:12px;color:#6b7280;">Count</td>
                     <td style="border:1px solid #e5e7eb;padding:10px;font-size:14px;">
-                      {{ message_count }} message
+                      {{ message_count }} message{{ '' if message_count == 1 else 's' }}
                     </td>
                   </tr>
                 </table>
@@ -143,9 +166,9 @@
                       <li style="margin-bottom:6px;">{{ step }}</li>
                     {% endfor %}
                   {% else %}
-                    <li>Review the sender IP <a href="https://whois.arin.net/rest/ip/{{ source_ip }}" target="_blank" rel="noopener noreferrer" style="color:#111827;text-decoration:underline;"> {{ source_ip }}</a> and ownership (WHOIS/ASN). </li>
-                    <li>Verify SPF/DKIM alignment for <strong>{{ header_from }}</strong>. </li>
-                    <li>Check mail logs for similar attempts and increase DMARC enforcement if warranted.</li>
+                    <li>Confirm <strong>DMARC alignment mode</strong> for <code>{{ header_from }}</code>: current <code>adkim=s</code>, <code>aspf=s</code>.</li>
+                    <li>EITHER align mail/auth to the exact Header-From domain (same <code>d=</code> for DKIM and <code>mfrom</code> for SPF), OR relax alignment by setting <code>adkim=r</code> and <code>aspf=r</code>.</li>
+                    <li>Verify updated DNS and re-test delivery/auth from the same sending service (e.g., {{ auth_spf_pass_subdomains[0].domain if auth_spf_pass_subdomains }})</li>
                   {% endif %}
                 </ol>
               </td>
@@ -186,13 +209,12 @@
               <td style="padding:12px 20px 20px 20px;">
                 <div class="muted" style="color:#6b7280;font-size:12px;line-height:18px;">
                   Sent by {{ org_name or 'Security' }}<br>
-                  You’re receiving this alert because you’re subscribed to spoofing detections for {{ header_from }}.
+                  You’re receiving this alert because you’re subscribed to <strong>domain misconfiguration</strong> detections for {{ header_from }}.
                 </div>
               </td>
             </tr>
           </table>
 
-          <!-- Spacer -->
           <div style="height:24px;line-height:24px;font-size:24px;">&zwnj;</div>
         </td>
       </tr>

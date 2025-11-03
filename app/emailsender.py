@@ -1,6 +1,9 @@
 # emailsender.py
 # A robust SMTP email sender with optional DKIM signing and persistent
 # connection support.
+# A similar class also exists at
+# https://github.com/vivekuppal/dnslookup/blob/main/emailsender.py
+# Any changes to this class should be mirrored there as well.
 import smtplib
 import ssl
 import socket
@@ -23,7 +26,8 @@ class EmailSender:
     # Reasonable defaults for DKIM header set
     _DEFAULT_DKIM_HEADERS = [
         "From", "To", "Subject", "Date", "Message-ID",
-        "Reply-To", "Cc", "MIME-Version", "Content-Type", "Content-Transfer-Encoding",
+        "Reply-To", "Cc", "MIME-Version", "Content-Type",
+        "Content-Transfer-Encoding",
     ]
 
     def __init__(
@@ -108,8 +112,8 @@ class EmailSender:
                 if self.use_tls:
                     server.starttls(context=context)
                     server.ehlo()
-            print(f"Connecting to SMTP server {self.smtp_host}:{self.smtp_port}")
-            print(f"Using TLS: {self.use_tls}, SSL: {self.use_ssl}")
+            # print(f"Connecting to SMTP server {self.smtp_host}:{self.smtp_port}")
+            # print(f"Using TLS: {self.use_tls}, SSL: {self.use_ssl}")
             server.login(self.username, self.password)
             return server
 

@@ -24,6 +24,14 @@ class Pattern(Protocol):
     """Pattern checks a single <record> element and returns 0..n matches."""
     name: str
     severity: str
+    fall_through: bool = True  # whether to continue with other patterns after match
+
+    def __init__(
+        self,
+        fall_through: bool = True,
+    ):
+        self.fall_through = fall_through
+
     def test(self, record_elem) -> List[Match]: ...
 
 
@@ -51,14 +59,16 @@ class XmlPatternEngine:
         self._routes = routes
 
     def scan_file(self, path: Path) -> int:
-        # import io
-        from defusedxml import ElementTree as ET  # safe XML parser
+        """
+        Stream-parse XML from a file and dispatch actions on matches.
+        """
 
         matches_count = 0
         # iterparse for memory efficiency; free elements after use
         context = ET.iterparse(str(path), events=("end",))
         for event, elem in context:
-            # DMARC aggregate: <record> appears under <feedback>-><record> but we don't assume exact root
+            # DMARC aggregate: <record> appears under <feedback>-><record>
+            # but we don't assume exact root
             if elem.tag.lower().endswith("record"):
                 # (Optional) capture snippet: serialize minimal element to string
                 snippet = ET.tostring(elem, encoding="unicode", method="xml")
@@ -78,6 +88,9 @@ class XmlPatternEngine:
                         action.run(found)
                     matches_count += len(found)
 
+                    if not p.fall_through:
+                        break  # stop testing further patterns for this record
+
                 # important: clear to release memory
                 elem.clear()
 
@@ -88,7 +101,7 @@ class XmlPatternEngine:
         Stream-parse XML from an in-memory string and dispatch actions on matches.
         Mirrors engine.scan_file() but reads from a StringIO source.
         """
-        print("Scanning in-memory XML string")
+        # print("Scanning in-memory XML string")
         matches_count = 0
         context = ET.iterparse(io.StringIO(xml_text), events=("end",))
         for event, elem in context:
@@ -111,10 +124,13 @@ class XmlPatternEngine:
 
                     # route to actions bound to this pattern
                     for action in self._routes.get(p.name, []):
-                        print(f"Running action: {action.name} for pattern: {p.name}")
+                        # print(f"Running action: {action.name} for pattern: {p.name}")
                         action.run(found)
 
                     matches_count += len(found)
+
+                    if not p.fall_through:
+                        break  # stop testing further patterns for this record
 
                 elem.clear()  # free memory
         print(f"scan_string - Total matches found: {matches_count}")
