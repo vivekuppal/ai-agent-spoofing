@@ -3,15 +3,21 @@ import base64
 import json
 import logging
 import os
+from datetime import datetime
 from typing import Any, Dict, Optional, Tuple
-
-from fastapi import FastAPI, Request, HTTPException, Response
+from contextlib import asynccontextmanager
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text, select, func
+from fastapi import FastAPI, Request, HTTPException, Response, Depends
 from google.cloud import storage
 from google.cloud.exceptions import Conflict
 from google.api_core.exceptions import PreconditionFailed
 from app.emailsender import EmailSender
 from app.processor import process_file
-from app.utils import verify_pubsub_jwt_if_required, json_dumps, get_secret
+from app.utils import verify_pubsub_jwt_if_required, json_dumps, get_secret, clear_gsm_cache
+from app.db import init_engine, dispose_engine, get_db
+from app.models import DMARCReport, DMARCReportDetail, ProcessedFile
+
 
 logger = logging.getLogger("uvicorn")
 logger.setLevel(logging.INFO)
@@ -24,7 +30,19 @@ OUTPUT_PREFIX = os.getenv("OUTPUT_PREFIX", f"outputs/{COMPONENT_NAME}/")
 READ_CHUNK_SIZE = int(os.getenv("READ_CHUNK_SIZE", "0"))  # 0 -> entire file
 
 
-app = FastAPI(title=COMPONENT_NAME)
+@asynccontextmanager
+async def lifespan(local_app: FastAPI):
+    # If you want to run startup checks or migrations, do it here
+    # e.g., verify DB connectivity:
+    # async with engine.begin() as conn:
+    #     await conn.execute(text("SELECT 1"))
+    init_engine()
+    yield
+    await dispose_engine()
+
+
+app = FastAPI(title=COMPONENT_NAME, lifespan=lifespan)
+
 
 # Lazily created GCS client
 _storage_client: Optional[storage.Client] = None
@@ -129,7 +147,8 @@ def _extract_event(body: Dict[str, Any]) -> Tuple[str, str, Optional[int], Dict[
     }
 
 
-def _download_exact_generation(bucket_name: str, object_id: str, generation: Optional[int]) -> bytes:
+def _download_exact_generation(bucket_name: str, object_id: str,
+                               generation: Optional[int]) -> bytes:
     """
     Download the object bytes, pinning to a specific generation when provided.
     """
@@ -145,10 +164,65 @@ def _download_exact_generation(bucket_name: str, object_id: str, generation: Opt
         return blob.download_as_bytes()
 
 
-@app.get("/health")
+@app.get("/healthz")
 def health():
+    """ Basic health check endpoint. """
     return {"status": "ok", "component": COMPONENT_NAME}
 
+
+@app.get('/')
+def home():
+    """Home endpoint for Agent spoofing detection service."""
+    return {
+        'name': 'Spoofing Detection Service',
+        'version': '1.0.0',
+        'description': 'Service to detect email spoofing using AI agents.',
+        'status': 'running',
+        'endpoints': {
+            '/': 'Home page. Provides a list of available endpoints.',
+            '/healthz': 'Health check endpoint',
+            '/status': 'Application status endpoint',
+            '/test-db': 'Test database connectivity',
+            '/local': 'Process a local DMARC XML file for detection',
+            '/clear-gsm-cache': 'Clear cached Google Cloud Secret Manager secrets'
+        }
+    }
+
+
+@app.get('/status')
+async def status(db: AsyncSession = Depends(get_db)):
+    """Application status endpoint"""
+
+    try:
+        dmarc_count = await db.scalar(
+            select(func.count()).select_from(DMARCReport))
+        detail_count = await db.scalar(
+            select(func.count()).select_from(DMARCReportDetail))
+        processed_count = await db.scalar(
+            select(func.count()).select_from(ProcessedFile))
+
+        status_info = {
+            'status': 'running',
+            'timestamp': datetime.now().isoformat(),
+            'database': {
+                'dmarc_reports': dmarc_count,
+                'dmarc_report_details': detail_count,
+                'processed_files': processed_count
+            },
+            'configuration': {
+                'component_name': COMPONENT_NAME,
+                'expected_event_type': EXPECTED_EVENT_TYPE,
+                'object_prefix': OBJECT_PREFIX,
+                'output_prefix': OUTPUT_PREFIX,
+                'gcs_bucket': 'from event notification'
+            }
+        }
+
+        return status_info
+
+    except Exception as e:
+        logger.exception("status_failed")
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 @app.get("/clear-gsm-cache")
 def clear_cached_secrets():
@@ -156,21 +230,34 @@ def clear_cached_secrets():
     Clear the cached Google Cloud Secret Manager secrets.
     Useful if you know a secret has changed and you want to force a reload.
     """
-    from app.utils import clear_gsm_cache
     clear_gsm_cache()
     return {"status": "ok", "message": "GSM cache cleared."}
 
 
+@app.get("/test-db")
+async def test_db(db: AsyncSession = Depends(get_db)):
+    """Test database connectivity."""
+    logger.info("DB probe: starting")
+    try:
+        await db.execute(text("SELECT 1"))
+        logger.info("DB probe: success")
+        return {"status": "success"}
+    except Exception as e:
+        logger.exception("DB probe failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/local")
-async def local_test():
+async def local_test(db: AsyncSession = Depends(get_db)):
     """
     Process the file smoke.xml locally"""
-    with open("smoke1.xml", "rb") as f:
+    with open("smoke.xml", "rb") as f:
         content_bytes = f.read()
     result = await process_file(
             content=content_bytes,
             context={
                 "email_sender": get_email_sender(),
+                "async_session": db,
             }
         )
     print("Local test result:", result)
@@ -178,7 +265,7 @@ async def local_test():
 
 
 @app.post("/")  # Pub/Sub push target
-async def pubsub_push(request: Request):
+async def pubsub_push(request: Request, db: AsyncSession = Depends(get_db)):
     """ Process the push notification from pub sub
     """
     await verify_pubsub_jwt_if_required(request)
@@ -252,6 +339,7 @@ async def pubsub_push(request: Request):
                 "component": COMPONENT_NAME,
                 "raw_event": raw,
                 "email_sender": get_email_sender(),
+                "async_session": db,
             }
         )
     except Exception as e:

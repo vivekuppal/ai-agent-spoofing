@@ -54,6 +54,8 @@ set RUNTIME_SA=%RUNTIME_SA_NAME%@%PROJECT_ID%.iam.gserviceaccount.com
 set PUSH_SA=%PUSH_SA_NAME%@%PROJECT_ID%.iam.gserviceaccount.com
 set PUBSUB_SERVICE_AGENT=service-%PROJECT_NUMBER%@gcp-sa-pubsub.iam.gserviceaccount.com
 set GCS_SERVICE_AGENT=service-%PROJECT_NUMBER%@gs-project-accounts.iam.gserviceaccount.com
+set VPC_CONNECTOR=lai-vpc-connector
+set VPC_EGRESS=private-ranges-only
 
 set DLQ_TOPIC=dlq.%SUB%
 
@@ -144,6 +146,9 @@ call gcloud run deploy "%SERVICE%" ^
   --timeout 60 ^
   --platform managed ^
   --project "%PROJECT_ID%" ^
+  --vpc-connector "%VPC_CONNECTOR%" ^
+  --vpc-egress "%VPC_EGRESS%" ^
+  --set-secrets DATABASE_URL=ASYNC_DATABASE_URL:latest ^
   --set-env-vars COMPONENT_NAME=%ENV_COMPONENT_NAME%,EXPECTED_EVENT_TYPE=%ENV_EXPECTED_EVENT_TYPE%,OBJECT_PREFIX=%ENV_OBJECT_PREFIX%,OUTPUT_PREFIX=%ENV_OUTPUT_PREFIX%
 
 REM 6) Get service URL
@@ -170,6 +175,8 @@ call gcloud pubsub topics create "%DLQ_TOPIC%" --project "%PROJECT_ID%"
 REM 10) Allow service agent to publish to DLQ
 call gcloud pubsub topics add-iam-policy-binding "%DLQ_TOPIC%" --member="serviceAccount:%PUBSUB_SERVICE_AGENT%" --role="roles/pubsub.publisher" --project "%PROJECT_ID%"
 
+REM --- NEW: grant the runtime SA access to the DB secret ---
+call gcloud secrets add-iam-policy-binding ASYNC_DATABASE_URL --project "%PROJECT_ID%" --member "serviceAccount:%RUNTIME_SA%" --role "roles/secretmanager.secretAccessor"
 call gcloud secrets add-iam-policy-binding SMTP_PASSWORD --member="serviceAccount:%PUBSUB_SERVICE_AGENT%" --role="roles/secretmanager.secretAccessor" --project "%PROJECT_ID%"
 call gcloud secrets add-iam-policy-binding SMTP_PASSWORD --member="serviceAccount:%RUNTIME_SA%" --role="roles/secretmanager.secretAccessor" --project "%PROJECT_ID%"
 call gcloud projects add-iam-policy-binding "%PROJECT_ID%" --member="serviceAccount:%RUNTIME_SA%" --role="roles/vpcaccess.user"

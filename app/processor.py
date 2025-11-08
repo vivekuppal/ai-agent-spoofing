@@ -1,244 +1,73 @@
 # app/processor.py
 from __future__ import annotations
+import hashlib
+import traceback
 from typing import Any, Dict
 from app.patterns.core import XmlPatternEngine
 from app.patterns.dmarc_patterns import BothFailPolicyPattern
 from app.patterns.dmarc_strict_alignment_misconfig import StrictAlignmentMisconfigurationPattern
 from app.action.email_action import EmailAction
 from app.emailsender import EmailSender
+from app.action.alert_action import AlertInsertAction
 
 
 async def process_file(content: bytes, context: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Implement component logic here.
-    'content' is the exact bytes of the uploaded GCS object.
-    'context' gives bucket/name/generation and the raw event payload.
-    Return a JSON-serializable result.
-    """
-    # Example: we expect the content to be a DMARC XML file.
-    # If the content is not valid XML, it will raise an exception.
+    Process a DMARC XML file content (bytes), applying patterns
+    and executing actions."""
     try:
-        # Create an XML pattern engine with the registered patterns
-        patterns = [StrictAlignmentMisconfigurationPattern(fall_through=False),
-                    BothFailPolicyPattern()]
+        file_hash = hashlib.sha256(content).hexdigest()
+        print(f"Processing file with SHA256: {file_hash}")
+        async_session = context["async_session"]
+
+        patterns = [
+            StrictAlignmentMisconfigurationPattern(
+                file_hash=file_hash,
+                fall_through=False,
+                db=async_session),
+            BothFailPolicyPattern(
+                file_hash=file_hash,
+                fall_through=True,
+                db=async_session),
+        ]
+
+        # Build actions
+        email_sender: EmailSender = context["email_sender"]
+
+        misconfig_email = EmailAction(
+            sender=email_sender,
+            from_addr="from_addr=vivek@lappuai.com",
+            to_addrs=["vivek.uppal@gmail.com", "vivek@lappuai.com"],
+            subject_prefix="[Misconfiguration Alert]",
+            template_path="app/templates/domain-misconfiguration-alert.html",
+        )
+        spoof_email = EmailAction(
+            sender=email_sender,
+            from_addr="vivek@lappuai.com",
+            to_addrs=["vivek.uppal@gmail.com", "vivek@lappuai.com"],
+            subject_prefix="[Spoofing Alert]",
+            template_path="app/templates/spoofing-alert.html",
+        )
+
+        alert_action = AlertInsertAction(default_status="open")
+
         routes = {
             StrictAlignmentMisconfigurationPattern.name: [
-                EmailAction(
-                    sender=context["email_sender"],
-                    from_addr="from_addr=vivek@lappuai.com",
-                    to_addrs=["vivek.uppal@gmail.com", "vivek@lappuai.com"],
-                    subject_prefix="[Misconfiguration Alert]",
-                    template_path="app/templates/domain-misconfiguration-alert.html",
-                )
+                misconfig_email,
+                alert_action,
             ],
             BothFailPolicyPattern.name: [
-                EmailAction(
-                    sender=context["email_sender"],
-                    from_addr="vivek@lappuai.com",
-                    to_addrs=["vivek.uppal@gmail.com", "vivek@lappuai.com"],
-                    subject_prefix="[Spoofing Alert]",
-                    template_path="app/templates/spoofing-alert.html",
-                )
-            ]
+                spoof_email,
+                alert_action,
+            ],
         }
+
         engine = XmlPatternEngine(patterns, routes)
-        # Process the XML content
-        matches_count = engine.scan_string(content.decode("utf-8"))
-        return {"matches_count": matches_count}
+        matches_count = await engine.scan_string_async(content.decode("utf-8"))
+        inserted = await alert_action.flush(async_session)
+
+        return {"matches_count": matches_count, "alerts_inserted": inserted}
     except Exception as ex:
         print(f"Error processing file: {ex}")
+        print(traceback.print_exc())
         return {"kind": "bytes", "size": len(content)}
-
-
-def example_in_memory_xml_with_email():
-    """
-    Demonstrates pattern detection from an in-memory DMARC XML string.
-    If BothFailPolicyPattern matches, an email is sent via EmailSender.
-    """
-    # In-memory XML with two records: one matches (both fail), one does not.
-    xml_text = """<?xml version="1.0" encoding="UTF-8"?>
-    <feedback>
-      <record>
-        <row>
-          <source_ip>23.83.217.29</source_ip>
-          <count>1</count>
-          <policy_evaluated>
-            <disposition>none</disposition>
-            <dkim>fail</dkim>
-            <spf>fail</spf>
-          </policy_evaluated>
-        </row>
-        <identifiers>
-          <header_from>nextorbit.co</header_from>
-        </identifiers>
-        <auth_results>
-          <spf>
-            <domain>srv1167.main-hosting.eu</domain>
-            <result>pass</result>
-          </spf>
-        </auth_results>
-      </record>
-
-      <record>
-        <row>
-          <source_ip>203.0.113.8</source_ip>
-          <count>2</count>
-          <policy_evaluated>
-            <disposition>none</disposition>
-            <dkim>pass</dkim>
-            <spf>fail</spf>
-          </policy_evaluated>
-        </row>
-        <identifiers>
-          <header_from>example.com</header_from>
-        </identifiers>
-      </record>
-    </feedback>
-    """
-
-    # --- configure EmailSender (fill in your real SMTP settings) ---
-    smtp_host = "smtp.gmail.com"       # or your provider
-    smtp_port = 587
-    username = "alerts@yourdomain.com"
-    password = "APP_PASSWORD"
-    to_list = ["you@yourdomain.com"]
-
-    # We keep a persistent connection for the demo run
-    with EmailSender(
-        smtp_host=smtp_host,
-        smtp_port=smtp_port,
-        username=username,
-        password=password,
-        use_tls=(smtp_port == 587),
-        use_ssl=(smtp_port == 465),
-    ) as sender:
-
-        # Register pattern(s)
-        patterns = [BothFailPolicyPattern()]
-
-        # Route pattern -> actions (here: send a single summarized
-        # email per matched record)
-        routes = {
-            "both_fail_policy": [
-                EmailAction(
-                    sender=sender,
-                    from_addr=username,
-                    to_addrs=to_list,
-                    subject_prefix="[Spoofing Alert]",
-                )
-            ]
-        }
-
-        engine = XmlPatternEngine(patterns, routes)
-
-        # Run the scan on the in-memory XML string
-        hits = engine.scan_string(xml_text)
-        print(f"demo_in_memory_xml_with_email: dispatched {hits} match(es).")
-
-
-def example_in_memory_xml_with_no_email():
-    """
-    Demonstrates pattern detection from an in-memory DMARC XML string.
-    If BothFailPolicyPattern matches, an email is sent via EmailSender.
-    """
-    # In-memory XML with two records: one matches (both fail), one does not.
-    xml_text = """<?xml version="1.0"?>
-<feedback xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-  <version>1.0</version>
-  <report_metadata>
-    <org_name>Enterprise Outlook</org_name>
-    <email>dmarcreport@microsoft.com</email>
-    <report_id>ad03f6caea56488196eb6e86ced704f7</report_id>
-    <date_range>
-      <begin>1755561600</begin>
-      <end>1755648000</end>
-    </date_range>
-  </report_metadata>
-  <policy_published>
-    <domain>lappuai.com</domain>
-    <adkim>s</adkim>
-    <aspf>s</aspf>
-    <p>reject</p>
-    <sp>reject</sp>
-    <pct>100</pct>
-    <fo>1</fo>
-  </policy_published>
-  <record>
-    <row>
-      <source_ip>3.132.222.232</source_ip>
-      <count>1</count>
-      <policy_evaluated>
-        <disposition>reject</disposition>
-        <dkim>fail</dkim>
-        <spf>fail</spf>
-      </policy_evaluated>
-    </row>
-    <identifiers>
-      <envelope_to>medfordtax.com</envelope_to>
-      <envelope_from>lappuai.com</envelope_from>
-      <header_from>lappuai.com</header_from>
-    </identifiers>
-    <auth_results>
-      <dkim>
-        <domain>lappuai.com</domain>
-        <selector>dreamhost</selector>
-        <result>fail</result>
-      </dkim>
-      <spf>
-        <domain>lappuai.com</domain>
-        <scope>mfrom</scope>
-        <result>fail</result>
-      </spf>
-    </auth_results>
-  </record>
-  <record>
-    <row>
-      <source_ip>23.83.212.19</source_ip>
-      <count>1</count>
-      <policy_evaluated>
-        <disposition>none</disposition>
-        <dkim>pass</dkim>
-        <spf>pass</spf>
-      </policy_evaluated>
-    </row>
-    <identifiers>
-      <envelope_to>medfordtax.com</envelope_to>
-      <envelope_from>lappuai.com</envelope_from>
-      <header_from>lappuai.com</header_from>
-    </identifiers>
-    <auth_results>
-      <dkim>
-        <domain>lappuai.com</domain>
-        <selector>dreamhost</selector>
-        <result>pass</result>
-      </dkim>
-      <spf>
-        <domain>lappuai.com</domain>
-        <scope>mfrom</scope>
-        <result>pass</result>
-      </spf>
-    </auth_results>
-  </record>
-</feedback>
-    """
-
-    # We keep a persistent connection for the demo run
-    # Register pattern(s)
-    patterns = [BothFailPolicyPattern()]
-
-    # Route pattern -> actions (here: send a single summarized
-    # email per matched record)
-    routes = {
-        "both_fail_policy": [
-        ]
-    }
-
-    engine = XmlPatternEngine(patterns, routes)
-
-    # Run the scan on the in-memory XML string
-    hits = engine.scan_string(xml_text)
-    print(f"demo_in_memory_xml_with_email: dispatched {hits} match(es).")
-
-
-if __name__ == "__main__":
-    example_in_memory_xml_with_no_email()

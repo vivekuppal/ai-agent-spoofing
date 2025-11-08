@@ -72,9 +72,6 @@ class EmailAction(Action):
             template_vars["org_name"] = "Lappu AI"
             template_vars["hostname"] = get_hostname_from_ip(md.get("source_ip"))
 
-            # Google map URL
-            # https://www.google.com/maps/@LATITUDE,LONGITUDE,ZOOM_LEVELz
-
             self.sender.send(
                 from_addr=self.from_addr,
                 to=self.to_addrs,
