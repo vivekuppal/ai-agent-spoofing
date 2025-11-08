@@ -5,8 +5,11 @@ import logging
 from typing import List, Optional, Dict, Any
 from dataclasses import dataclass
 from defusedxml import ElementTree as ET
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
 from app.patterns.core import Match, Pattern
-from app.xml import dmarc  # <-- your shared namespace-safe helpers
+from app.xml import dmarc
+
 
 logger = logging.getLogger(__name__)
 
@@ -54,55 +57,71 @@ def _detect_policy_published(record_elem) -> Optional[ET.Element]:
     return None
 
 
+def _severity_from_policy_p(pp_elem) -> str:
+    try:
+        ns = dmarc.detect_default_ns_from_elem(pp_elem) if pp_elem is not None else {}
+        p_val = (dmarc.text(dmarc.find(pp_elem, "p", ns)) or "").lower() if pp_elem is not None else ""
+    except Exception:
+        p_val = ""
+    if p_val == "none":
+        return "high"
+    if p_val == "quarantine":
+        return "medium"
+    if p_val == "reject":
+        return "low"
+    return "medium"
+
+
 @dataclass
 class StrictAlignmentMisconfigurationPattern(Pattern):
     """
     Detects: policy_evaluated DKIM=fail and SPF=fail for Header From domain,
     while auth_results show DKIM pass and SPF pass on subdomains of Header From.
     """
+
     name: str = "STRICT_ALIGNMENT_MISCONFIG_SUBDOMAIN_PASSES"
-    severity: str = "medium"
 
-    def __init__(self, fall_through: bool = True):
+    def __init__(
+        self,
+        file_hash: str,
+        fall_through: bool = True,
+        db: Optional[AsyncSession] = None,   # injected AsyncSession
+    ):
         Pattern.__init__(self, fall_through=fall_through)
+        self.file_hash = file_hash
+        self._db = db
 
-    def test(self, record_elem) -> List[Match]:
-        # print(f"Find namespace from record_elem")
+    # Optional sync path (no DB) — used by the sync engine
+    def test(self, record_elem, policy_published_elem) -> List[Match]:
+        return []  # encourage async path for this pattern
+
+    # Async path with DB enrichment at the last step
+    async def test_async(self, record_elem, policy_published_elem) -> List[Match]:
         ns = dmarc.detect_default_ns_from_elem(record_elem)
-        # print(f"Namespace mapping: {ns}")
 
-        # --- DMARC policy_evaluated must be fail/fail ---
-        # print(f"Find policy evaluated")
         policy = dmarc.find(record_elem, "policy_evaluated", ns)
-        # print(f"Policy is: {policy}")
         if policy is None:
             return []
 
-        # print(f"Find dkim, spf, disposition")
         dmarc_dkim_val = (dmarc.text(dmarc.find(policy, "dkim", ns)) or "").lower()
         dmarc_spf_val = (dmarc.text(dmarc.find(policy, "spf", ns)) or "").lower()
         dmarc_disposition = (dmarc.text(dmarc.find(policy, "disposition", ns)) or "").lower()
-
         if dmarc_dkim_val != "fail" or dmarc_spf_val != "fail":
             return []
 
-        # --- header_from & source_ip (context) ---
         row = dmarc.find(record_elem, "row", ns)
-        source_ip = dmarc.text(dmarc.find(row, "source_ip", ns))
+        source_ip = dmarc.text(dmarc.find(row, "source_ip", ns)) if row is not None else None
 
         identifiers = dmarc.find(record_elem, "identifiers", ns)
-        header_from = dmarc.text(dmarc.find(identifiers, "header_from", ns))
+        header_from = dmarc.text(dmarc.find(identifiers, "header_from", ns)) if identifiers is not None else None
         if not header_from:
             return []
 
-        # --- extract <row><count> for message_count ---
-        count_text = dmarc.text(dmarc.find(row, "count", ns))
+        count_text = dmarc.text(dmarc.find(row, "count", ns)) if row is not None else None
         message_count = _safe_int(count_text, default=1)
 
-        # --- auth_results: require at least one DKIM pass and one SPF pass on subdomains of header_from ---
         auth_results = dmarc.find(record_elem, "auth_results", ns)
         if auth_results is None:
-            logger.debug("StrictAlignmentMisconfigurationPattern: No <auth_results> found")
             return []
 
         dkim_pass_domains: List[Dict[str, Any]] = []
@@ -122,10 +141,8 @@ class StrictAlignmentMisconfigurationPattern(Pattern):
                 spf_pass_domains.append({"domain": dom, "scope": scope})
 
         if not dkim_pass_domains or not spf_pass_domains:
-            logger.debug("StrictAlignmentMisconfigurationPattern: No DKIM/SPF pass on subdomains found")
             return []
 
-        # --- (Optional) Check policy_published to confirm strict alignment flags if we can reach it ---
         adkim = aspf = None
         pp = _detect_policy_published(record_elem)
         if pp is not None:
@@ -133,26 +150,21 @@ class StrictAlignmentMisconfigurationPattern(Pattern):
             adkim = (dmarc.text(dmarc.find(pp, "adkim", pp_ns)) or "").lower()
             aspf = (dmarc.text(dmarc.find(pp, "aspf", pp_ns)) or "").lower()
 
-        strict_hints = []
+        strict_hints: List[str] = []
         if adkim == "s":
             strict_hints.append("adkim=s")
         if aspf == "s":
             strict_hints.append("aspf=s")
 
-        if strict_hints:
-            message = (
-                f"DMARC failed (DKIM+SPF) for Header From {header_from}, but DKIM and SPF "
-                f"both passed for subdomain(s). Policy uses strict alignment ({', '.join(strict_hints)}); "
-                "this likely indicates an alignment configuration issue."
-            )
-        else:
-            # If we cannot confirm strict via policy_published (or it's relaxed),
-            # keep the signal but phrase it carefully (as in your original).
-            message = (
-                f"DMARC failed (DKIM+SPF) for Header From {header_from}, while DKIM and SPF "
-                "passed for subdomain(s). This is likely an alignment configuration issue "
-                "(strict alignment may be in effect, or aligned identifiers differ)."
-            )
+        message = (
+            f"DMARC failed (DKIM+SPF) for Header From {header_from}, but DKIM and SPF "
+            f"both passed for subdomain(s). Policy uses strict alignment ({', '.join(strict_hints)}); "
+            "this likely indicates an alignment configuration issue."
+            if strict_hints else
+            "DMARC failed (DKIM+SPF) for Header From "
+            f"{header_from}, while DKIM and SPF passed for subdomain(s). "
+            "This likely indicates an alignment configuration issue."
+        )
 
         environment = (
             "production"
@@ -160,33 +172,73 @@ class StrictAlignmentMisconfigurationPattern(Pattern):
             else "development"
         )
 
-        return [
-            Match(
-                pattern_name=self.name,
-                severity=self.severity,
-                message=message,
-                environment=environment,
-                metadata={
-                    "source_ip": source_ip,
-                    "header_from": header_from,
-                    "dmarc_disposition": dmarc_disposition,
-                    "dmarc_dkim_result": dmarc_dkim_val,
-                    "dmarc_spf_result": dmarc_spf_val,
-                    "auth_dkim_pass_subdomains": dkim_pass_domains,
-                    "auth_spf_pass_subdomains": spf_pass_domains,
-                    "message_count": message_count,
-                    "likely_cause": (
-                        "Strict alignment with auth on subdomain (misalignment)."
-                        if strict_hints else
-                        "Misalignment between Header From and authenticated identifiers."
-                    ),
-                    "policy_adkim": adkim,
-                    "policy_aspf": aspf,
-                    "suggested_fix": (
-                        "Either align DKIM/SPF to the exact Header From domain, or relax alignment "
-                        "by setting adkim=r and aspf=r in policy_published."
-                    ),
-                    "xml_snippet": ET.tostring(record_elem, encoding="unicode", method="xml"),
-                },
-            )
-        ]
+        computed_severity = _severity_from_policy_p(policy_published_elem)
+
+        metadata: Dict[str, Any] = {
+            "source_ip": source_ip,
+            "header_from": header_from,
+            "dmarc_disposition": dmarc_disposition,
+            "dmarc_dkim_result": dmarc_dkim_val,
+            "dmarc_spf_result": dmarc_spf_val,
+            "auth_dkim_pass_subdomains": dkim_pass_domains,
+            "auth_spf_pass_subdomains": spf_pass_domains,
+            "message_count": message_count,
+            "likely_cause": (
+                "Strict alignment with auth on subdomain (misalignment)." if strict_hints
+                else "Misalignment between Header From and authenticated identifiers."
+            ),
+            "policy_adkim": adkim,
+            "policy_aspf": aspf,
+            "suggested_fix": (
+                "Either align DKIM/SPF to the exact Header From domain, or relax alignment "
+                "by setting adkim=r and aspf=r in policy_published."
+            ),
+            "xml_snippet": ET.tostring(record_elem, encoding="unicode", method="xml"),
+        }
+
+        # LAST STEP: async DB lookup to enrich IDs (only if db + required params exist)
+        if self._db and self.file_hash and source_ip:
+            sql = text("""
+                SELECT pf.dmarc_report_id, drd.id
+                FROM processed_file pf
+                INNER JOIN dmarc_report_details drd
+                    ON drd.dmarc_report_id = pf.dmarc_report_id
+                WHERE pf.file_hash = :file_hash
+                  AND pf.status = 'done'
+                  AND drd.disposition = :disp
+                  AND drd.dkim = :dkim
+                  AND drd.spf = :spf
+                  AND drd.source_ip = :ip
+                LIMIT 1
+            """)
+            params = {
+                "file_hash": self.file_hash,
+                "disp": dmarc_disposition,
+                "dkim": dmarc_dkim_val,
+                "spf": dmarc_spf_val,
+                "ip": source_ip,
+            }
+            print(f"sql: {sql}")
+            print(f"params: {params}")
+
+            try:
+                result = await self._db.execute(sql, params)
+                row = result.first()
+                if row:
+                    m = row._mapping
+                    metadata["dmarc_report_id"] = m.get("dmarc_report_id")
+                    metadata["dmarc_report_detail_id"] = m.get("id")
+            except Exception as ex:
+                print(f"DB lookup error in StrictAlignmentMisconfigurationPattern: {ex}")
+                logger.error("DB lookup error in StrictAlignmentMisconfigurationPattern", exc_info=True)
+                metadata.setdefault("lookup_error", str(ex))
+
+        print(metadata)
+
+        return [Match(
+            pattern_name=self.name,
+            severity=computed_severity,
+            message=message,
+            environment=environment,
+            metadata=metadata,
+        )]

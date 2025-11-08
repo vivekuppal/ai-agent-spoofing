@@ -11,13 +11,16 @@ set ENV_EXPECTED_EVENT_TYPE=OBJECT_FINALIZE
 set ENV_OBJECT_PREFIX=spoofing/
 set ENV_OUTPUT_PREFIX=outputs/%SERVICE%/
 set PUSH_SA_NAME=pubsub-push-spoofing-sa
-
 set PUSH_SA=%PUSH_SA_NAME%@%PROJECT_ID%.iam.gserviceaccount.com
+
+set VPC_CONNECTOR=lai-vpc-connector
+set SECRET_NAME=ASYNC_DATABASE_URL
+set VPC_EGRESS=private-ranges-only
 
 for /f %%I in ('powershell -NoProfile -Command "(Get-Date).ToString('yyyyMMdd-HHmmss')"') do set "TS=%%I"
 set IMAGE=gcr.io/%PROJECT_ID%/%SERVICE%:%TS%
 
-
+REM Build
 call gcloud builds submit --tag "%IMAGE%" --project "%PROJECT_ID%"
 timeout /t 10
 
@@ -34,6 +37,9 @@ call gcloud run deploy "%SERVICE%" ^
   --timeout 60 ^
   --platform managed ^
   --project "%PROJECT_ID%" ^
+  --vpc-connector "%VPC_CONNECTOR%" ^
+  --vpc-egress "%VPC_EGRESS%" ^
+  --set-secrets DATABASE_URL=%SECRET_NAME%:latest ^
   --set-env-vars COMPONENT_NAME=%ENV_COMPONENT_NAME%,EXPECTED_EVENT_TYPE=%ENV_EXPECTED_EVENT_TYPE%,OBJECT_PREFIX=%ENV_OBJECT_PREFIX%,OUTPUT_PREFIX=%ENV_OUTPUT_PREFIX%
 
 @echo on

@@ -31,6 +31,7 @@ Run the app using the below command
 
 ```cmd
 set DESKTOP_ENV=true
+set DATABASE_URL=
 set SMTP_PASSWORD=
 
 uvicorn app.main:app --host 0.0.0.0 --port 8080
