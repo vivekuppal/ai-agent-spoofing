@@ -88,6 +88,7 @@ class XmlPatternEngine:
             if tag.endswith("record"):
                 snippet = ET.tostring(elem, encoding="unicode", method="xml")
                 for p in self._patterns:
+                    print(f"Testing Pattern: {p.name}.")
                     found = p.test(elem, policy_published_elem)
                     for m in found:
                         if m.xml_snippet is None:
@@ -96,6 +97,7 @@ class XmlPatternEngine:
                     if found and not p.fall_through:
                         break
                 elem.clear()
+        print(f"scan_string: Total Matches: {matches_count}")
         return matches_count
 
     async def scan_string_async(self, xml_text: str) -> int:
@@ -115,6 +117,7 @@ class XmlPatternEngine:
             if tag.endswith("record"):
                 snippet = ET.tostring(elem, encoding="unicode", method="xml")
                 for p in self._patterns:
+                    print(f"Testing Pattern: {p.name}.")
                     if hasattr(p, "test_async"):
                         found = await p.test_async(elem, policy_published_elem)  # type: ignore[attr-defined]
                     else:
@@ -126,4 +129,5 @@ class XmlPatternEngine:
                     if found and not p.fall_through:
                         break
                 elem.clear()
+        print(f"scan_string_async: Total Matches: {matches_count}")
         return matches_count
