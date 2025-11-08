@@ -218,8 +218,8 @@ class StrictAlignmentMisconfigurationPattern(Pattern):
                 "spf": dmarc_spf_val,
                 "ip": source_ip,
             }
-            print(f"sql: {sql}")
-            print(f"params: {params}")
+            # print(f"sql: {sql}")
+            # print(f"params: {params}")
 
             try:
                 result = await self._db.execute(sql, params)
@@ -233,7 +233,7 @@ class StrictAlignmentMisconfigurationPattern(Pattern):
                 logger.error("DB lookup error in StrictAlignmentMisconfigurationPattern", exc_info=True)
                 metadata.setdefault("lookup_error", str(ex))
 
-        print(metadata)
+        # print(metadata)
 
         return [Match(
             pattern_name=self.name,
