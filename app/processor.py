@@ -3,12 +3,44 @@ from __future__ import annotations
 import hashlib
 import traceback
 from typing import Any, Dict
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
 from app.patterns.core import XmlPatternEngine
 from app.patterns.dmarc_patterns import BothFailPolicyPattern
 from app.patterns.dmarc_strict_alignment_misconfig import StrictAlignmentMisconfigurationPattern
 from app.emailsender import EmailSender
 from app.action.alert_action import AlertInsertAction
 from app.action.feature_gated_email_action import FeatureGatedEmailAction
+from app.feature_utils import is_subfeature_enabled_for_customer
+
+
+async def _resolve_customer_id(session: AsyncSession,
+                               file_hash: str) -> int | None:
+    """
+    Given a file_hash, resolve the associated customer_id from the database."""
+    sql = text("""
+      SELECT dr.customer_id
+      FROM processed_file pf
+      JOIN dmarc_reports dr ON dr.id = pf.dmarc_report_id
+      WHERE pf.file_hash=:fh AND pf.status='done'
+      LIMIT 1
+    """)
+    row = (await session.execute(sql, {"fh": file_hash})).first()
+    return row._mapping["customer_id"] if row else None
+
+
+async def _load_flags(session, customer_id: int) -> dict[str, bool]:
+    KEYS = [
+      "SPOOFING_ALERT_EMAIL", "MISCONFIGURATION_ALERT_EMAIL",
+      "SPOOFING_ALERT", "MISCONFIGURATION_ALERT"
+    ]
+    results = {}
+    for k in KEYS:
+        results[k] = await is_subfeature_enabled_for_customer(
+            session, customer_id=customer_id,
+            feature_key=k, respect_is_active=True
+        )
+    return results
 
 
 async def process_file(content: bytes, context: Dict[str, Any]) -> Dict[str, Any]:
@@ -17,20 +49,36 @@ async def process_file(content: bytes, context: Dict[str, Any]) -> Dict[str, Any
     and executing actions."""
     try:
         file_hash = hashlib.sha256(content).hexdigest()
-        print(f"Processing file with SHA256: {file_hash}")
+        # print(f"Processing file with SHA256: {file_hash}")
         async_session = context["async_session"]
         email_sender: EmailSender = context["email_sender"]
+        customer_id = await _resolve_customer_id(async_session, file_hash)
+        flags = await _load_flags(async_session, customer_id)
 
-        patterns = [
-            StrictAlignmentMisconfigurationPattern(
+        need_spoof = flags["SPOOFING_ALERT_EMAIL"] or flags["SPOOFING_ALERT"]
+        need_mis = flags["MISCONFIGURATION_ALERT_EMAIL"] or flags["MISCONFIGURATION_ALERT"]
+
+        # Early exit: nothing enabled → no XML scan at all
+        if not (need_spoof or need_mis):
+            return {"matches_count": 0, "emails_sent": 0, "alerts_inserted": 0, "skipped": "features disabled"}
+
+        # Build only the patterns we actually need
+        patterns = []
+        if need_mis:
+            patterns.append(StrictAlignmentMisconfigurationPattern(
                 file_hash=file_hash,
                 fall_through=False,
-                db=async_session),
-            BothFailPolicyPattern(
+                # Pass DB only if DB work will be used (alert enabled). Saves one SELECT per record otherwise.
+                db=async_session if flags["MISCONFIGURATION_ALERT"] else None
+            ))
+        if need_spoof:
+            patterns.append(BothFailPolicyPattern(
                 file_hash=file_hash,
                 fall_through=True,
-                db=async_session),
-        ]
+                db=async_session if flags["SPOOFING_ALERT"] else None
+            ))
+
+        ctx = {"customer_id": customer_id, "flags": flags}
 
         misconfig_email = FeatureGatedEmailAction(
             sender=email_sender,
@@ -53,16 +101,15 @@ async def process_file(content: bytes, context: Dict[str, Any]) -> Dict[str, Any
 
         alert_action = AlertInsertAction(default_status="open")
 
-        routes = {
-            StrictAlignmentMisconfigurationPattern.name: [
-                misconfig_email,
-                alert_action,
-            ],
-            BothFailPolicyPattern.name: [
-                spoof_email,
-                alert_action,
-            ],
-        }
+        misconfig_email.set_context(ctx)
+        spoof_email.set_context(ctx)
+        alert_action.set_context(ctx)
+
+        routes = {}
+        if need_mis:
+            routes[StrictAlignmentMisconfigurationPattern.name] = [misconfig_email, alert_action]
+        if need_spoof:
+            routes[BothFailPolicyPattern.name] = [spoof_email, alert_action]
 
         engine = XmlPatternEngine(patterns, routes)
         matches_count = await engine.scan_string_async(content.decode("utf-8"))

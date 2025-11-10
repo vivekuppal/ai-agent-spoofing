@@ -119,6 +119,9 @@ class BothFailPolicyPattern(Pattern):
         if not (source_ip and disp and dkim_val is not None and spf_val is not None):
             return matches
 
+        if not self._db:
+            return matches
+
         sql = text("""
             SELECT pf.dmarc_report_id, drd.id, dr.customer_id
             FROM processed_file pf

@@ -1,6 +1,6 @@
 # actions/alert_action.py
 from __future__ import annotations
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from app.patterns.core import Match, Action
@@ -32,6 +32,10 @@ class AlertInsertAction(Action):
         self._default_status = default_status
         self._priority_mapper = priority_mapper or _priority_from_severity
         self._buffer: List[Match] = []
+        self._ctx: dict[str, Any]
+
+    def set_context(self, ctx: dict[str, Any]) -> None:
+        self._ctx = ctx
 
     def run(self, matches: List[Match]) -> None:
         if matches:
@@ -61,27 +65,37 @@ class AlertInsertAction(Action):
         return (m.get("dmarc_report_id"), m.get("id"))
 
     async def flush(self, session: AsyncSession) -> int:
+        """Insert buffered alerts into the database. Returns number of alerts inserted."""
         if not self._buffer:
             return 0
+
+        # Pull preloaded flags if present
+        pre_customer_id: int | None = None
+        pre_flags: dict[str, bool] | None = None
+        if self._ctx:
+            pre_customer_id = self._ctx.get("customer_id")
+            pre_flags = self._ctx.get("flags")
 
         to_insert: List[Alert] = []
         for m in self._buffer:
             md = m.metadata or {}
             rid = md.get("dmarc_report_id")
             rdid = md.get("dmarc_report_detail_id")
-            customer_id = md.get("customer_id")
-
-            # Feature-gate: if we know the customer, check the subfeature
             subkey = PATTERN_TO_SUBFEATURE.get(m.pattern_name)
-            if subkey and customer_id is not None:
-                enabled = await is_subfeature_enabled_for_customer(
-                    session,
-                    customer_id=customer_id,
-                    feature_key=subkey,
-                    respect_is_active=True,
-                )
-                if not enabled:
-                    continue  # skip this alert
+
+            # Feature gate: prefer in-memory flags
+            allowed = True
+            if subkey:
+                if pre_flags is not None and pre_customer_id is not None:
+                    allowed = bool(pre_flags.get(subkey, False))
+                else:
+                    customer_id = md.get("customer_id")
+                    if customer_id is not None:
+                        allowed = await is_feature_enabled_for_customer(
+                            session, customer_id=customer_id, feature_key=subkey, respect_is_active=True
+                        )
+            if not allowed:
+                continue
 
             to_insert.append(Alert(
                 type=m.pattern_name,
@@ -101,40 +115,6 @@ class AlertInsertAction(Action):
             await session.flush()
             await session.commit()
         else:
-            async with session.begin():
-                session.add_all(to_insert)
-
-        inserted = len(to_insert)
-        self._buffer.clear()
-        return inserted
-
-    async def flush1(self, session: AsyncSession) -> int:
-        if not self._buffer:
-            return 0
-
-        to_insert: List[Alert] = []
-        for m in self._buffer:
-            md = m.metadata or {}
-            rid = md.get("dmarc_report_id")
-            rdid = md.get("dmarc_report_detail_id")
-
-            to_insert.append(Alert(
-                type=m.pattern_name,
-                severity=(m.severity or "low").lower(),
-                priority=(md.get("alert_priority")
-                          or self._priority_mapper(m.severity)),
-                status=self._default_status,
-                dmarc_report_id=rid,
-                dmarc_report_detail_id=rdid,
-            ))
-
-        if session.in_transaction():
-            # Reuse the existing txn created by earlier SELECTs
-            session.add_all(to_insert)
-            await session.flush()    # ensure INSERTs are sent
-            await session.commit()   # ✅ commit the reused txn
-        else:
-            # Start/commit a short transaction for the inserts
             async with session.begin():
                 session.add_all(to_insert)
 

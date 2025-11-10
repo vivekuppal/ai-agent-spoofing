@@ -1,6 +1,6 @@
 # actions/email_action.py
 from __future__ import annotations
-from typing import List
+from typing import List, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.emailsender import (EmailSender)
 from app.patterns.core import Match, Action
@@ -35,6 +35,10 @@ class FeatureGatedEmailAction(Action):
         self.subfeature_key = subfeature_key
         self.fail_open = fail_open
         self._buffer: List[Match] = []
+        self._ctx: dict[str, Any] | None = None
+
+    def set_context(self, ctx: dict[str, Any]) -> None:  # <-- NEW
+        self._ctx = ctx
 
     # sync per Action interface
     def run(self, matches: List[Match]) -> None:
@@ -48,8 +52,22 @@ class FeatureGatedEmailAction(Action):
         sent = 0
         for m in self._buffer:
             md = m.metadata or {}
-            customer_id = md.get("customer_id")
-            # If customer_id isn’t known, decide by fail_open
+            if self._ctx and "customer_id" in self._ctx and "flags" in self._ctx:
+                customer_id = self._ctx["customer_id"]
+                flags: dict[str, bool] = self._ctx["flags"]
+                enabled = bool(flags.get(self.subfeature_key, False))
+            else:
+                # fallback (rare): use DB
+                customer_id = md.get("customer_id")
+                if customer_id is None and not self.fail_open:
+                    continue
+                enabled = await is_subfeature_enabled_for_customer(
+                    session,
+                    customer_id=customer_id,
+                    feature_key=self.subfeature_key,
+                    respect_is_active=True
+                )
+
             if customer_id is None:
                 if not self.fail_open:
                     continue  # skip silently

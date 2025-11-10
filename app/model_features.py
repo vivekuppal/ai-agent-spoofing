@@ -159,8 +159,8 @@ class CustomerFeatureFlags(Base):
     feature = relationship("FeatureCatalog", back_populates="customer_flags")
     sub_feature = relationship("SubfeatureCatalog", back_populates="customer_flags")
     # NOTE: Add this on your Customer model:
-    # feature_flags = relationship("CustomerFeatureFlags", back_populates="customer", cascade="all, delete-orphan")
-    customer = relationship("Customer", back_populates="feature_flags")
+    # feature_flags = relationship("CustomerFeatureFlags", back_populates="customers", cascade="all, delete-orphan")
+    # customer = relationship("Customers", back_populates="feature_flags")
 
     def __repr__(self):
         """ String representation of the FeatureCatalog instance."""
