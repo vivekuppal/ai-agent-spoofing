@@ -2,6 +2,7 @@
 from __future__ import annotations
 from typing import List
 import uuid
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.emailsender import (EmailSender)
 from app.patterns.core import Match, Action
 from app.utils import (
@@ -14,7 +15,7 @@ from app.utils import (
 class EmailAction(Action):
     """
     Sends a concise alert email for a batch of matches (grouped by the engine per route invocation).
-    Uses your EmailSender.
+    Uses EmailSender.
     """
     name = "email_action"
 

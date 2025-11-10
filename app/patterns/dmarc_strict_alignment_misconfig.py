@@ -199,10 +199,12 @@ class StrictAlignmentMisconfigurationPattern(Pattern):
         # LAST STEP: async DB lookup to enrich IDs (only if db + required params exist)
         if self._db and self.file_hash and source_ip:
             sql = text("""
-                SELECT pf.dmarc_report_id, drd.id
+                SELECT pf.dmarc_report_id, drd.id, dr.customer_id
                 FROM processed_file pf
                 INNER JOIN dmarc_report_details drd
                     ON drd.dmarc_report_id = pf.dmarc_report_id
+                INNER JOIN dmarc_reports dr
+                    ON dr.id = pf.dmarc_report_id
                 WHERE pf.file_hash = :file_hash
                   AND pf.status = 'done'
                   AND drd.disposition = :disp
@@ -228,6 +230,7 @@ class StrictAlignmentMisconfigurationPattern(Pattern):
                     m = row._mapping
                     metadata["dmarc_report_id"] = m.get("dmarc_report_id")
                     metadata["dmarc_report_detail_id"] = m.get("id")
+                    metadata["customer_id"] = m.get("customer_id")
             except Exception as ex:
                 print(f"DB lookup error in StrictAlignmentMisconfigurationPattern: {ex}")
                 logger.error("DB lookup error in StrictAlignmentMisconfigurationPattern", exc_info=True)

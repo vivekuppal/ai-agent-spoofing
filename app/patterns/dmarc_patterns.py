@@ -120,10 +120,12 @@ class BothFailPolicyPattern(Pattern):
             return matches
 
         sql = text("""
-            SELECT pf.dmarc_report_id, drd.id
+            SELECT pf.dmarc_report_id, drd.id, dr.customer_id
             FROM processed_file pf
             INNER JOIN dmarc_report_details drd
                 ON drd.dmarc_report_id = pf.dmarc_report_id
+            INNER JOIN dmarc_reports dr
+                    ON dr.id = pf.dmarc_report_id
             WHERE pf.file_hash = :file_hash
               AND pf.status = 'done'
               AND drd.disposition = :disp
@@ -146,6 +148,7 @@ class BothFailPolicyPattern(Pattern):
                 m = row._mapping
                 md["dmarc_report_id"] = m.get("dmarc_report_id")
                 md["dmarc_report_detail_id"] = m.get("id")
+                md["customer_id"] = m.get("customer_id")
         except Exception as ex:
             md.setdefault("lookup_error", str(ex))
 
