@@ -88,7 +88,6 @@ class XmlPatternEngine:
             if tag.endswith("record"):
                 snippet = ET.tostring(elem, encoding="unicode", method="xml")
                 for p in self._patterns:
-                    print(f"Testing Pattern: {p.name}.")
                     found = p.test(elem, policy_published_elem)
                     for m in found:
                         if m.xml_snippet is None:
@@ -117,7 +116,6 @@ class XmlPatternEngine:
             if tag.endswith("record"):
                 snippet = ET.tostring(elem, encoding="unicode", method="xml")
                 for p in self._patterns:
-                    print(f"Testing Pattern: {p.name}.")
                     if hasattr(p, "test_async"):
                         found = await p.test_async(elem, policy_published_elem)  # type: ignore[attr-defined]
                     else:

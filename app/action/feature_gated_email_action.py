@@ -4,7 +4,7 @@ from typing import List, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.emailsender import (EmailSender)
 from app.patterns.core import Match, Action
-from app.feature_utils import is_subfeature_enabled_for_customer
+from app.feature_utils import is_subfeature_enabled_for_customer, is_feature_enabled_for_customer
 
 
 class FeatureGatedEmailAction(Action):
@@ -25,6 +25,7 @@ class FeatureGatedEmailAction(Action):
         subject_prefix: str,
         template_path: str,
         subfeature_key: str,            # e.g. "SPOOFING_ALERT_EMAIL" | "MISCONFIGURATION_ALERT_EMAIL"
+        feature_key: str,          # e.g. "ALERTS" | "EMAILS" (optional)
         fail_open: bool = False,        # if customer_id missing: send (True) or skip (False)
     ):
         self.sender = sender
@@ -33,6 +34,7 @@ class FeatureGatedEmailAction(Action):
         self.subject_prefix = subject_prefix
         self.template_path = template_path
         self.subfeature_key = subfeature_key
+        self.feature_key = feature_key
         self.fail_open = fail_open
         self._buffer: List[Match] = []
         self._ctx: dict[str, Any] | None = None
@@ -50,36 +52,23 @@ class FeatureGatedEmailAction(Action):
         Returns number of emails actually sent.
         """
         sent = 0
+        customer_id: int | None = None
         for m in self._buffer:
             md = m.metadata or {}
+            enabled: bool = True
+
             if self._ctx and "customer_id" in self._ctx and "flags" in self._ctx:
                 customer_id = self._ctx["customer_id"]
                 flags: dict[str, bool] = self._ctx["flags"]
-                enabled = bool(flags.get(self.subfeature_key, False))
-            else:
-                # fallback (rare): use DB
-                customer_id = md.get("customer_id")
-                if customer_id is None and not self.fail_open:
-                    continue
-                enabled = await is_subfeature_enabled_for_customer(
-                    session,
-                    customer_id=customer_id,
-                    feature_key=self.subfeature_key,
-                    respect_is_active=True
-                )
+                enabled = bool(flags.get(self.subfeature_key, False)) or bool(flags.get(self.feature_key, False))
+
+            if not enabled:
+                print(f"Skipping email for pattern {m.pattern_name} as feature flag is disabled.")
+                continue  # skip silently
 
             if customer_id is None:
                 if not self.fail_open:
                     continue  # skip silently
-            else:
-                enabled = await is_subfeature_enabled_for_customer(
-                    session,
-                    customer_id=customer_id,
-                    feature_key=self.subfeature_key,
-                    respect_is_active=True,
-                )
-                if not enabled:
-                    continue
 
             # Build subject/vars exactly like your EmailAction
             subject = f'{self.subject_prefix} {md.get("header_from")} {m.pattern_name}'

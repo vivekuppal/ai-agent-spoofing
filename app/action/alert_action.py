@@ -5,7 +5,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from app.patterns.core import Match, Action
 from app.models import Alert
-from app.feature_utils import is_subfeature_enabled_for_customer
 
 
 PATTERN_TO_SUBFEATURE = {

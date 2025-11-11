@@ -253,6 +253,7 @@ async def local_test(db: AsyncSession = Depends(get_db)):
     Process the file smoke.xml locally"""
     with open("smoke.xml", "rb") as f:
         content_bytes = f.read()
+    print(f"Processing local file smoke.xml of size {len(content_bytes)} bytes")
     result = await process_file(
             content=content_bytes,
             context={
@@ -329,6 +330,7 @@ async def pubsub_push(request: Request, db: AsyncSession = Depends(get_db)):
 
     # 2) Process
     try:
+        print(f"Processing file gs://{bucket}/{object_id} of size {len(content_bytes)} bytes")
         # create email sender instance and pass it to the processor
         result = await process_file(
             content=content_bytes,
