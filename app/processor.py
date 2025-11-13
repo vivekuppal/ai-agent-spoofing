@@ -137,8 +137,10 @@ async def process_file(content: bytes, context: Dict[str, Any]) -> Dict[str, Any
 
         routes = {}
         if need_mis:
+            print("Misconfiguration email or alerting enabled.")
             routes[StrictAlignmentMisconfigurationPattern.name] = [misconfig_email, alert_action]
         if need_spoof:
+            print("Spoofing email or alerting enabled.")
             routes[BothFailPolicyPattern.name] = [spoof_email, alert_action]
 
         engine = XmlPatternEngine(patterns, routes)

@@ -12,6 +12,8 @@ PATTERN_TO_SUBFEATURE = {
     "STRICT_ALIGNMENT_MISCONFIG_SUBDOMAIN_PASSES": "MISCONFIGURATION_ALERT",  # misconfig
 }
 
+FEATURE_ALERTS = "ALERTS"
+
 
 def _priority_from_severity(severity: Optional[str]) -> str:
     s = (severity or "").lower()
@@ -69,30 +71,27 @@ class AlertInsertAction(Action):
             return 0
 
         # Pull preloaded flags if present
-        pre_customer_id: int | None = None
-        pre_flags: dict[str, bool] | None = None
+        customer_id: int | None = None
+        flags: dict[str, bool] | None = None
         if self._ctx:
-            pre_customer_id = self._ctx.get("customer_id")
-            pre_flags = self._ctx.get("flags")
+            customer_id = self._ctx.get("customer_id")
+            flags = self._ctx.get("flags")
 
         to_insert: List[Alert] = []
+        # print(f"Flushing {len(self._buffer)} alerts to database.")
         for m in self._buffer:
             md = m.metadata or {}
             rid = md.get("dmarc_report_id")
             rdid = md.get("dmarc_report_detail_id")
-            subkey = PATTERN_TO_SUBFEATURE.get(m.pattern_name)
+            subkey = PATTERN_TO_SUBFEATURE.get(m.pattern_name)  # SPOOFING_ALERT, MISCONFIGURATION_ALERT
 
-            # Feature gate: prefer in-memory flags
+            # Check that the feature or subfeature is enabled
+            # Feeature = ALERTS
+            # Sub Feature = Determine from alert_type (SPF_AND_DKIM_FAIL, STRICT_ALIGNMENT_MISCONFIG_SUBDOMAIN_PASSES)
             allowed = True
-            if subkey:
-                if pre_flags is not None and pre_customer_id is not None:
-                    allowed = bool(pre_flags.get(subkey, False))
-                else:
-                    customer_id = md.get("customer_id")
-                    if customer_id is not None:
-                        allowed = await is_feature_enabled_for_customer(
-                            session, customer_id=customer_id, feature_key=subkey, respect_is_active=True
-                        )
+            if subkey and flags is not None and customer_id is not None:
+                allowed = bool(flags.get(subkey, False)) or bool(flags.get(FEATURE_ALERTS, False))
+
             if not allowed:
                 continue
 
