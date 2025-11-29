@@ -180,6 +180,7 @@ class StrictAlignmentMisconfigurationPattern(Pattern):
             "dmarc_disposition": dmarc_disposition,
             "dmarc_dkim_result": dmarc_dkim_val,
             "dmarc_spf_result": dmarc_spf_val,
+            "file_hash": self.file_hash,
             "auth_dkim_pass_subdomains": dkim_pass_domains,
             "auth_spf_pass_subdomains": spf_pass_domains,
             "message_count": message_count,

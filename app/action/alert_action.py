@@ -54,15 +54,16 @@ class AlertInsertAction(Action):
         """)
         result = await session.execute(sql, {
             "file_hash": lp.get("file_hash"),
-            "disp": lp.get("disp"),
-            "dkim": lp.get("dkim"),
-            "spf": lp.get("spf"),
-            "ip": lp.get("ip"),
+            "disp": lp.get("dmarc_disposition"),
+            "dkim": lp.get("dmarc_dkim_result"),
+            "spf": lp.get("dmarc_spf_result"),
+            "ip": lp.get("source_ip"),
         })
         row = result.first()
         if not row:
             return (None, None)
         m = row._mapping
+        # print(f"Resolved IDs: {m.get('dmarc_report_id')}, {m.get('id')}")
         return (m.get("dmarc_report_id"), m.get("id"))
 
     async def flush(self, session: AsyncSession) -> int:
@@ -80,9 +81,14 @@ class AlertInsertAction(Action):
         to_insert: List[Alert] = []
         # print(f"Flushing {len(self._buffer)} alerts to database.")
         for m in self._buffer:
+            # print(f"Processing match for alert insertion: {m.pattern_name} with metadata {m.metadata}")
             md = m.metadata or {}
-            rid = md.get("dmarc_report_id")
-            rdid = md.get("dmarc_report_detail_id")
+            result = await self._resolve_ids(session, md)
+            rid = result[0]
+            rdid = result[1]
+            # print(f"Resolved IDs for alert: dmarc_report_id={rid}, dmarc_report_detail_id={rdid}")
+            # rid = md.get("dmarc_report_id")
+            # rdid = md.get("dmarc_report_detail_id")
             subkey = PATTERN_TO_SUBFEATURE.get(m.pattern_name)  # SPOOFING_ALERT, MISCONFIGURATION_ALERT
 
             # Check that the feature or subfeature is enabled

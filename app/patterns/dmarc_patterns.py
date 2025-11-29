@@ -34,6 +34,9 @@ def _severity_from_policy_p(pp_elem) -> str:
 
 @dataclass
 class BothFailPolicyPattern(Pattern):
+    """
+    Matches when both DKIM and SPF fail under policy_evaluated.
+    """
     name: str = "SPF_AND_DKIM_FAIL"
     severity: str = "high"  # default; will be overridden per-policy
 
@@ -99,6 +102,7 @@ class BothFailPolicyPattern(Pattern):
                 "auth_dkim_result": dkim_auth_result,
                 "auth_dkim_domain": dkim_auth_domain,
                 "auth_dkim_selector": dkim_auth_selector,
+                "file_hash": self.file_hash,
                 "xml_snippet": ET.tostring(record_elem, encoding="unicode", method="xml"),
                 "alert_priority": "high",
                 # optional: keep a snapshot of policy p for downstream analytics

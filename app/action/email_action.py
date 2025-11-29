@@ -2,7 +2,6 @@
 from __future__ import annotations
 from typing import List
 import uuid
-from sqlalchemy.ext.asyncio import AsyncSession
 from app.emailsender import (EmailSender)
 from app.patterns.core import Match, Action
 from app.utils import (
@@ -38,7 +37,6 @@ class EmailAction(Action):
             return
 
         subject = f'{self.subject_prefix} {matches[0].metadata.get("header_from")} {matches[0].pattern_name} x{len(matches)}'
-        # Keep it simple; swap with Jinja later if you want rich templates
         lines = []
         for m in matches:
             md = m.metadata
