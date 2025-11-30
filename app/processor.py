@@ -96,7 +96,8 @@ async def process_file(content: bytes, context: Dict[str, Any]) -> Dict[str, Any
             patterns.append(StrictAlignmentMisconfigurationPattern(
                 file_hash=file_hash,
                 fall_through=False,
-                # Pass DB only if DB work will be used (alert enabled). Saves one SELECT per record otherwise.
+                # Pass DB only if DB work will be used (alert enabled).
+                # Saves one SELECT per record otherwise.
                 db=async_session if flags["MISCONFIGURATION_ALERT"] else None
             ))
         if need_spoof:

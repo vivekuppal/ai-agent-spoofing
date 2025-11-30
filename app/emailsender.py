@@ -367,10 +367,12 @@ class EmailSender:
         headers: Optional[dict[str, str]] = None,
         attachments: Optional[Iterable[Union[str, Path, tuple[str, bytes, str]]]] = None,
         message_id: Optional[str] = None,
-        # --- NEW: templating inputs ---
-        html_template: Optional[str] = None,                 # raw Jinja2 template string
-        html_template_path: Optional[Union[str, Path]] = None,  # path to Jinja2 template file
-        template_vars: Optional[dict] = None,                # variables for the Jinja2 template
+        # raw Jinja2 template string
+        html_template: Optional[str] = None,
+        # path to Jinja2 template file
+        html_template_path: Optional[Union[str, Path]] = None,
+        # variables for the Jinja2 template
+        template_vars: Optional[dict] = None,
     ) -> str:
         """
         Sends the message and returns its Message-ID.

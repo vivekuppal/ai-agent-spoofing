@@ -4,7 +4,6 @@ from typing import List, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.emailsender import (EmailSender)
 from app.patterns.core import Match, Action
-from app.feature_utils import is_subfeature_enabled_for_customer, is_feature_enabled_for_customer
 
 
 class FeatureGatedEmailAction(Action):
@@ -39,7 +38,12 @@ class FeatureGatedEmailAction(Action):
         self._buffer: List[Match] = []
         self._ctx: dict[str, Any] | None = None
 
-    def set_context(self, ctx: dict[str, Any]) -> None:  # <-- NEW
+    def set_context(self, ctx: dict[str, Any]) -> None:
+        """
+        Context should include:
+          - customer_id: int
+          - flags: dict[str, bool]  # pre-fetched feature/subfeature flags
+        """
         self._ctx = ctx
 
     # sync per Action interface
@@ -55,6 +59,11 @@ class FeatureGatedEmailAction(Action):
         customer_id: int | None = None
         for m in self._buffer:
             md = m.metadata or {}
+            lines = []
+            lines.append(
+                f"{m.message} | from={md.get('header_from')} src={md.get('source_ip')} "
+                f"(dkim={md.get('dmarc_dkim_result')}, spf={md.get('dmarc_spf_result')})"
+            )
             enabled: bool = True
 
             if self._ctx and "customer_id" in self._ctx and "flags" in self._ctx:
@@ -92,7 +101,7 @@ class FeatureGatedEmailAction(Action):
                 "auth_dkim_pass_subdomains": md.get("auth_dkim_pass_subdomains") or md.get("dkim_pass_domains"),
                 "auth_spf_pass_subdomains": md.get("auth_spf_pass_subdomains") or md.get("spf_pass_domains"),
                 "message_count": md.get("message_count"),
-                "summary": md.get("summary"),
+                "summary": "\n".join(lines),
                 "xml_snippet": md.get("xml_snippet"),
                 "logo_url": "https://www.lappuai.com/assets/lappu-ai-logo-final.jpg",
                 "org_name": "Lappu AI",

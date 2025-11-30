@@ -37,7 +37,7 @@ set SMTP_PASSWORD=
 uvicorn app.main:app --host 0.0.0.0 --port 8080
 ```
 
-Ensure app is up and running `http://localhost:8080/health`<br/>
+Ensure app is up and running `http://localhost:8080/healthz`<br/>
 
 To process the file `smoke.xml` locally call the endpoint `http://localhost:8080/local`
 
