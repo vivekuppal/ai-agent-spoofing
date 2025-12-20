@@ -21,8 +21,8 @@ class FeatureCatalog(Base):
                          onupdate=func.now(),
                          nullable=False)
 
-    key = Column(String(255), nullable=False, unique=True, index=True)  # e.g., 'EMAILS'
-    name = Column(String(255), nullable=False)                          # e.g., 'Emails'
+    key = Column(String(255), nullable=False, unique=True, index=True)
+    name = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
     is_active = Column(Boolean, nullable=False, server_default='true')
     default_enabled = Column(Boolean, nullable=False, server_default='false')
@@ -158,7 +158,7 @@ class CustomerFeatureFlags(Base):
     # Relationships
     feature = relationship("FeatureCatalog", back_populates="customer_flags")
     sub_feature = relationship("SubfeatureCatalog", back_populates="customer_flags")
-    # NOTE: Add this on your Customer model:
+    # NOTE: Add this on Customer model:
     # feature_flags = relationship("CustomerFeatureFlags", back_populates="customers", cascade="all, delete-orphan")
     # customer = relationship("Customers", back_populates="feature_flags")
 

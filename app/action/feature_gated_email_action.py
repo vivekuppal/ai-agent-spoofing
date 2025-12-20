@@ -57,6 +57,9 @@ class FeatureGatedEmailAction(Action):
         """
         sent = 0
         customer_id: int | None = None
+
+        # TODO: include the email for domain in the to_addrs dynamically per customer settings
+
         for m in self._buffer:
             md = m.metadata or {}
             lines = []

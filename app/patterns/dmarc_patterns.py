@@ -1,7 +1,7 @@
 # patterns/dmarc_patterns.py
 from __future__ import annotations
 import os
-from typing import List, Optional, Dict, Any
+from typing import List, Optional
 from dataclasses import dataclass
 from defusedxml import ElementTree as ET
 from sqlalchemy import text
@@ -35,7 +35,9 @@ def _severity_from_policy_p(pp_elem) -> str:
 @dataclass
 class BothFailPolicyPattern(Pattern):
     """
-    Matches when both DKIM and SPF fail under policy_evaluated.
+    Raise a spoofing alert.
+    Typically matches when both DKIM and SPF fail under policy_evaluated and 
+    there are not overrides
     """
     name: str = "SPF_AND_DKIM_FAIL"
     severity: str = "high"  # default; will be overridden per-policy
@@ -60,7 +62,20 @@ class BothFailPolicyPattern(Pattern):
         dkim_val = (dmarc.text(dmarc.find(policy, "dkim", ns)) or "").lower()
         spf_val = (dmarc.text(dmarc.find(policy, "spf", ns)) or "").lower()
         disp_val = (dmarc.text(dmarc.find(policy, "disposition", ns)) or "").lower()
+        reason = dmarc.find(policy, "reason", ns)
+        reason_type = None
+        reason_comment = None
+        if reason is not None:
+            reason_type = dmarc.text(dmarc.find(reason, "type", ns))
+            reason_comment = dmarc.text(dmarc.find(reason, "comment", ns))
+
+        # In a spoofing attempt, both DKIM and SPF fail
         if dkim_val != "fail" or spf_val != "fail":
+            return []
+
+        # Ignore ARC pass overrides. This is a common case in email forwarding scenarios
+        # or gmail delegated emails
+        if reason_type == "local_policy" and reason_comment == "arc=pass":
             return []
 
         row = dmarc.find(record_elem, "row", ns)
