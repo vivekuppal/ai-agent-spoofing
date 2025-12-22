@@ -55,12 +55,12 @@ async def _load_flags(session, customer_id: int) -> dict[str, bool]:
     for k in subfeature_keys:
         results[k] = await is_subfeature_enabled_for_customer(
             session, customer_id=customer_id,
-            feature_key=k, respect_is_active=True
+            subfeature_key=k
         )
     for k in feature_keys:
         results[k] = await is_feature_enabled_for_customer(
             session, customer_id=customer_id,
-            feature_key=k, respect_is_active=True
+            feature_key=k
         )
     return results
 
@@ -78,12 +78,14 @@ async def process_file(content: bytes, context: Dict[str, Any]) -> Dict[str, Any
 
         async_session = context["async_session"]
         customer_id = await _resolve_customer_id(async_session, file_hash)
+        # customer_id = await _resolve_customer_id(async_session, '0430eb032a3cc05c7fdb5e3f195d8e8fab0488376e6fd2817621d25bc94c33a3')
         flags = await _load_flags(async_session, customer_id)
         # print(f"Customer ID: {customer_id}, Feature Flags: {flags}")
 
         need_spoof = flags["SPOOFING_ALERT_EMAIL"] or flags["SPOOFING_ALERT"] or flags["ALERTS"] or flags["EMAILS"]
         need_mis = flags["MISCONFIGURATION_ALERT_EMAIL"] or flags["MISCONFIGURATION_ALERT"] or flags["ALERTS"] or flags["EMAILS"]
 
+        # print(f"Need spoofing alert: {need_spoof}, Need misconfig alert: {need_mis}")
         # Early exit: nothing enabled → no XML scan at all
         if (not need_spoof and not need_mis) or customer_id is None:
             print("No features enabled or customer ID not found; skipping processing.")

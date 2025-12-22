@@ -1,7 +1,35 @@
+# /app/feature_utils.py
+
 from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.model_features import FeatureCatalog, SubfeatureCatalog, CustomerFeatureFlags
+
+
+async def find_feature_id_by_subfeature(session: AsyncSession,
+                                        subfeature_id: Optional[int],
+                                        sub_feature_key: Optional[str]) -> int:
+    """
+    Find the feature_id for a given subfeature.
+    """
+    res = None
+    if subfeature_id is not None:
+        res = await session.execute(
+            select(SubfeatureCatalog).where(SubfeatureCatalog.id == subfeature_id)
+        )
+        subf = res.scalar_one_or_none()
+    elif sub_feature_key is not None:
+        res = await session.execute(
+            select(SubfeatureCatalog).where(SubfeatureCatalog.key == sub_feature_key)
+        )
+        subf = res.scalar_one_or_none()
+    else:
+        return None
+
+    if subf is None:
+        return None
+
+    return subf.feature_id
 
 
 async def is_feature_enabled_for_customer(
@@ -10,19 +38,13 @@ async def is_feature_enabled_for_customer(
     customer_id: int,
     feature_key: Optional[str] = None,
     feature_id: Optional[int] = None,
-    respect_is_active: bool = True,
 ) -> bool:
     """
     Is a FEATURE enabled for this customer?
 
-    Precedence:
-      1) Customer feature-level flag with sub_feature_id IS NULL (ALL sub-features)
-      2) FeatureCatalog.default_enabled
-      3) False
-
-    Notes:
-      - This does NOT check specific sub-feature overrides.
-      - If `respect_is_active=True`, inactive features are treated as disabled.
+    Is this feature enabled for the given customer? This checks the following:
+      1) Customer-specific feature flag (customer, feature)
+      2) False
     """
     # Resolve feature
     if feature_id is not None:
@@ -40,10 +62,7 @@ async def is_feature_enabled_for_customer(
     if feature is None:
         return False
 
-    if respect_is_active and not feature.is_active:
-        return False
-
-    # 1) Feature-level (ALL) flag
+    # Feature-level (ALL) flag
     res = await session.execute(
         select(CustomerFeatureFlags.enabled)
         .where(
@@ -57,11 +76,6 @@ async def is_feature_enabled_for_customer(
     if all_row is not None:
         return bool(all_row)
 
-    # 2) Feature default
-    if feature.default_enabled:
-        return True
-
-    # 3) Default disabled
     return False
 
 
@@ -70,80 +84,51 @@ async def is_subfeature_enabled_for_customer(
     *,
     customer_id: int,
     # identify by key or id (id takes precedence if both provided)
-    feature_key: Optional[str] = None,
     subfeature_key: Optional[str] = None,
-    feature_id: Optional[int] = None,
     subfeature_id: Optional[int] = None,
-    respect_is_active: bool = True,
 ) -> bool:
     """
     Is a SUB-FEATURE enabled for this customer?
 
     Precedence:
       1) Customer-specific sub-feature flag (customer, feature, subfeature)
-      2) Customer feature-level flag with sub_feature_id IS NULL (ALL sub-features)
-      3) Default fallbacks:
-         - SubfeatureCatalog.default_enabled
-         - FeatureCatalog.default_enabled
-      4) False
+      2) Customer feature-level flag
+      3) False
 
     Notes:
       - If `respect_is_active=True`, inactive features/subfeatures are treated as disabled.
       - Ensures the given subfeature belongs to the resolved feature.
     """
-    # Resolve feature
-    if feature_id is not None:
-        res = await session.execute(
-            select(FeatureCatalog).where(FeatureCatalog.id == feature_id)
-        )
-    elif feature_key is not None:
-        res = await session.execute(
-            select(FeatureCatalog).where(FeatureCatalog.key == feature_key)
-        )
-    else:
-        return False
+    # print(f"Resolving subfeature {subfeature_key}")
+    res = None
 
-    feature = res.scalar_one_or_none()
-    if feature is None:
-        return False
-
-    # Resolve subfeature (and ensure it belongs to the feature)
+    # Find subfeature_id (and ensure it belongs to the feature)
     if subfeature_id is not None:
         res = await session.execute(
             select(SubfeatureCatalog).where(
                 SubfeatureCatalog.id == subfeature_id,
-                SubfeatureCatalog.feature_id == feature.id,
             )
         )
     elif subfeature_key is not None:
+        print(f"Resolving subfeature {subfeature_key}")
         res = await session.execute(
             select(SubfeatureCatalog).where(
-                SubfeatureCatalog.feature_id == feature.id,
                 SubfeatureCatalog.key == subfeature_key,
             )
         )
     else:
-        # If no subfeature provided, delegate to feature-level check
-        return await is_feature_enabled_for_customer(
-            session,
-            customer_id=customer_id,
-            feature_id=feature.id,
-            respect_is_active=respect_is_active,
-        )
+        # subfeature_key or subfeature_id must be provided
+        return False
 
     subf = res.scalar_one_or_none()
     if subf is None:
+        # This subfeature does not exist
         return False
 
-    if respect_is_active:
-        if not feature.is_active or not subf.is_active:
-            return False
-
-    # 1) Specific sub-feature flag
+    # Find the sub feature flag in customer_feature_flags table
     res = await session.execute(
         select(CustomerFeatureFlags.enabled).where(
             CustomerFeatureFlags.customer_id == customer_id,
-            CustomerFeatureFlags.feature_id == feature.id,
             CustomerFeatureFlags.sub_feature_id == subf.id,
         ).limit(1)
     )
@@ -151,23 +136,12 @@ async def is_subfeature_enabled_for_customer(
     if specific is not None:
         return bool(specific)
 
-    # 2) Feature-level (ALL) flag
-    res = await session.execute(
-        select(CustomerFeatureFlags.enabled).where(
-            CustomerFeatureFlags.customer_id == customer_id,
-            CustomerFeatureFlags.feature_id == feature.id,
-            CustomerFeatureFlags.sub_feature_id.is_(None),
-        ).limit(1)
+    # If no row for subfeature in customer_feature_flags, delegate to feature-level check
+    return await is_feature_enabled_for_customer(
+        session,
+        customer_id=customer_id,
+        feature_id=await find_feature_id_by_subfeature(
+            session,
+            sub_feature_key=subfeature_key,
+            subfeature_id=subfeature_id),
     )
-    all_row = res.scalar_one_or_none()
-    if all_row is not None:
-        return bool(all_row)
-
-    # 3) Defaults
-    if subf.default_enabled:
-        return True
-    if feature.default_enabled:
-        return True
-
-    # 4) Default disabled
-    return False

@@ -8,7 +8,9 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from app.utils import get_secret
+from sqlalchemy.orm import declarative_base
 
+Base = declarative_base()
 
 logger = logging.getLogger(__name__)
 

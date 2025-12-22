@@ -9,14 +9,13 @@ from sqlalchemy import (
     Enum as SQLEnum,
     ForeignKey,
     func,
+    CheckConstraint,
+    Date,
     text
 )
 from sqlalchemy.orm import relationship
-from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.dialects import postgresql as psql
-
-# Create base class for models
-Base = declarative_base()
+from app.db import Base
 
 
 class EmailStatus(enum.Enum):
@@ -118,6 +117,90 @@ class Domain(Base):
             'modified_at': self.modified_at.isoformat() if self.modified_at else None,
             'domain': self.domain,
             'customer_id': self.customer_id
+        }
+
+
+class Customer(Base):
+    """Model for storing customer information"""
+
+    __tablename__ = "customers"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(Text, nullable=False)
+
+    status = Column(
+        Text,
+        nullable=False,
+        server_default="presale",
+        index=True,
+    )
+
+    tier = Column(
+        String(20),
+        server_default="free",
+        nullable=True,
+    )
+
+    service_start_date = Column(Date, nullable=True)
+    service_end_date = Column(Date, nullable=True)
+
+    report_email = Column(String(200), nullable=True)
+
+    created_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    modified_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "tier IN ('free', 'low', 'high', 'enterprise')",
+            name="customers_tier_check",
+        ),
+    )
+
+    def __repr__(self):
+        """String representation of the model"""
+        return (
+            f"<Customer(id={self.id}, name='{self.name}', "
+            f"status='{self.status}', tier='{self.tier}')>"
+        )
+
+    def to_dict(self):
+        """Convert model to dictionary"""
+        return {
+            "id": self.id,
+            "name": self.name,
+            "status": self.status,
+            "tier": self.tier,
+            "service_start_date": (
+                self.service_start_date.isoformat()
+                if self.service_start_date
+                else None
+            ),
+            "service_end_date": (
+                self.service_end_date.isoformat()
+                if self.service_end_date
+                else None
+            ),
+            "report_email": self.report_email,
+            "created_at": (
+                self.created_at.isoformat()
+                if self.created_at
+                else None
+            ),
+            "modified_at": (
+                self.modified_at.isoformat()
+                if self.modified_at
+                else None
+            ),
         }
 
 
